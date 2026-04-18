@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\..\common.props" />
+
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>VNext.Testing.Template</PackageId>
+    <Description>dotnet new template for vNext integration test projects. Creates a ready-to-run xUnit + Testcontainers + Dapr test project wired to VNext.Testing.Sdk.</Description>
+    <!--
+      Template pack — no compilable source; content/ folder is packed as template assets.
+    -->
+    <IncludeContentInPack>true</IncludeContentInPack>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <ContentTargetFolders>content</ContentTargetFolders>
+    <NoDefaultExcludes>true</NoDefaultExcludes>
+    <!--
+      Prevent the SDK from picking up .cs files inside content/ as compiler inputs.
+    -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!--
+      Template packs have no compiled output, so symbol packages are meaningless and
+      would fail with NU5017 (package has no content). Disable them here since
+      common.props enables them globally.
+    -->
+    <IncludeSymbols>false</IncludeSymbols>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="content\**\*" Exclude="content\**\bin\**;content\**\obj\**" />
+  </ItemGroup>
+
+</Project>

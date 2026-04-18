@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/VNext.Testing.Sdk/VNext.Testing.Sdk.csproj" />
+    <Project Path="src/VNext.Testing.Template/VNext.Testing.Template.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MyDomain.IntegrationTests/MyDomain.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,46 @@
+# Build outputs
+bin/
+obj/
+out/
+
+# NuGet packages
+*.nupkg
+*.snupkg
+packages/
+.nuget/
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# dotnet tools
+.dotnet/
+tools/
+
+# Test results
+TestResults/
+coverage/
+*.trx
+*.xml
+*.coveragexml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment / secrets
+.env
+.env.*
+*.pfx
+*.p12
+
+# Template pack output — generated nupkgs from VNext.Testing.Template
+src/VNext.Testing.Template/content/**/bin/
+src/VNext.Testing.Template/content/**/obj/
+
+# Local NuGet feed
+local-feed/

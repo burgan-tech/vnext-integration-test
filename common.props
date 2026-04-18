@@ -1,0 +1,38 @@
+<Project>
+
+  <!--
+    Shared properties for all packable projects in this repository.
+    Override any property in the individual .csproj file if needed.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- Package metadata -->
+    <Authors>Burgan Tech vNext Platform Team</Authors>
+    <Company>Burgan Tech</Company>
+    <Copyright>Copyright © Burgan Tech $([System.DateTime]::Now.Year)</Copyright>
+    <PackageVersion>1.0.0</PackageVersion>
+    <Version>$(PackageVersion)</Version>
+    <PackageTags>vnext;integration-testing;testcontainers;dapr;xunit</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+
+    <!-- Repository -->
+    <RepositoryUrl>https://github.com/burgan-tech/vnext-integration-test</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/burgan-tech/vnext-integration-test</PackageProjectUrl>
+
+    <!-- Source Link — embeds commit SHA and repo URL in the NuGet symbol package -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+    <!-- Deterministic builds -->
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+</Project>

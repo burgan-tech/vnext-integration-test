@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Burgan Tech vNext Platform Team",
+  "classifications": ["Test", "Integration", "vNext", "Dapr", "xUnit"],
+  "identity": "VNext.IntegrationTest.Template",
+  "name": "vNext Integration Test Project",
+  "shortName": "vnext-integration-test",
+  "description": "A ready-to-run xUnit integration test project wired to VNext.Testing.Sdk. Includes Testcontainers-based Docker stack (PostgreSQL, Redis, Vault, Dapr), VNextApiClient, and example smoke tests.",
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "sourceName": "MyDomain",
+  "preferNameDirectory": true,
+  "symbols": {
+    "DomainName": {
+      "type": "parameter",
+      "datatype": "string",
+      "defaultValue": "MyDomain",
+      "replaces": "MyDomain",
+      "description": "Pascal-case domain name used as the C# namespace and project name prefix (e.g. MorphFx, PortfolioManager)."
+    },
+    "AppDomain": {
+      "type": "parameter",
+      "datatype": "string",
+      "defaultValue": "mydomain",
+      "replaces": "mydomain",
+      "description": "Lower-case domain slug used in vNext API paths and container env vars (e.g. morphfx, portfolio-manager)."
+    },
+    "VNextImage": {
+      "type": "parameter",
+      "datatype": "string",
+      "defaultValue": "ghcr.io/burgan-tech/vnext",
+      "replaces": "ghcr.io/burgan-tech/vnext",
+      "description": "Base container image for vNext orchestrator and execution services."
+    },
+    "SdkVersion": {
+      "type": "parameter",
+      "datatype": "string",
+      "defaultValue": "1.0.0",
+      "replaces": "1.0.0-sdk",
+      "description": "Version of the VNext.Testing.Sdk NuGet package to reference."
+    }
+  },
+  "sources": [
+    {
+      "modifiers": [
+        {
+          "exclude": [
+            ".template.config/**"
+          ]
+        }
+      ]
+    }
+  ]
+}

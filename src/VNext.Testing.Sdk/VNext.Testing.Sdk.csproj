@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\..\common.props" />
+
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>VNext.Testing.Sdk</PackageId>
+    <Description>SDK providing reusable integration test infrastructure for vNext-based services. Includes VNextApiClient, VNextTestEnvironment (Testcontainers), IntegrationTestBase, LocalDomainPublisher and extensibility hooks.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591;CS1574</NoWarn>
+    <RootNamespace>VNext.Testing.Sdk</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Testcontainers" Version="4.7.0" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.7.0" />
+    <PackageReference Include="Testcontainers.Redis" Version="4.7.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+  </ItemGroup>
+
+  <!-- Embed default Dapr component YAML files as resources -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\DaprComponents\**\*.yaml">
+      <LogicalName>%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+</Project>
