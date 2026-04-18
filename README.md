@@ -141,12 +141,15 @@ Manages the full vNext Docker stack using Testcontainers. Startup sequence:
 Docker network
   └─ PostgreSQL + Redis + Vault (parallel)
        └─ Vault secret seeding
-            └─ db-migrator (run-to-completion — exits after migration)
-                 └─ Dapr placement + scheduler (parallel)
-                      └─ vNext orchestrator + daprd sidecar
-                           └─ vNext execution + daprd sidecar
-                                └─ Mocklab + daprd sidecar (long-lived mock HTTP service)
-                                     └─ LocalDomainPublisher (uploads domain definitions)
+            └─ CreateDatabase
+                 └─ Dapr component YAMLs + appsettings preparation (all roles)
+                      └─ Dapr placement + scheduler (parallel)
+                           └─ db-migrator + daprd sidecar (run-to-completion — exits after migration)
+                                └─ vNext orchestrator + daprd sidecar
+                                     └─ vNext execution + daprd sidecar
+                                          └─ Mocklab + daprd sidecar (long-lived mock HTTP service)
+                                               └─ LocalDomainPublisher (uploads domain definitions)
+                                                    └─ OnAfterEnvironmentReadyAsync
 ```
 
 When the **`VNEXT_BASE_URL` environment variable** is set, Docker containers are skipped and only the domain publish step runs.
