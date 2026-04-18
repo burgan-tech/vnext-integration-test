@@ -122,13 +122,24 @@ jobs:
         for project in "${PROJECTS[@]}"; do
           if [ -f "$project" ]; then
             echo "Packing: $project"
+            
+            # Detect template projects (no build output, symbols not applicable)
+            IS_TEMPLATE=false
+            if grep -q '<IncludeBuildOutput>false</IncludeBuildOutput>' "$project"; then
+              IS_TEMPLATE=true
+            fi
+            
+            SYMBOL_FLAGS="-p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg"
+            if [ "$IS_TEMPLATE" == "true" ]; then
+              SYMBOL_FLAGS="-p:IncludeSymbols=false"
+            fi
+            
             dotnet pack "$project" \
               --configuration Release \
               --no-build \
               --output "$OUTPUT_DIR" \
               -p:Version=$VERSION \
-              -p:IncludeSymbols=true \
-              -p:SymbolPackageFormat=snupkg \
+              $SYMBOL_FLAGS \
               -p:GenerateDocumentationFile=true \
               -p:PublishRepositoryUrl=true \
               -p:EmbedUntrackedSources=true \

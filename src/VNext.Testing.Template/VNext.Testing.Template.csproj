@@ -27,7 +27,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="content\**\*" Exclude="content\**\bin\**;content\**\obj\**" />
+    <Content Include="content/**/*" Exclude="content/**/bin/**;content/**/obj/**" />
   </ItemGroup>
 
 </Project>
