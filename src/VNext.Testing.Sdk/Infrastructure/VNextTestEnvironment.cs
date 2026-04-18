@@ -99,9 +99,8 @@ public class VNextTestEnvironment : IAsyncLifetime
     /// Defaults to <c>{VNextImage}/db-migrator:{VNextImageVersion}</c>.
     /// Override to use a pinned version or a different registry path.
     /// </summary>
-    // protected virtual string DbMigratorImage => $"{VNextImage}/db-migrator:{VNextImageVersion}";
-    protected virtual string DbMigratorImage => $"vnext-db-migrator:{VNextImageVersion}";
-
+    protected virtual string DbMigratorImage => $"{VNextImage}/db-migrator:{VNextImageVersion}";
+    
     /// <summary>Mocklab container image. Override to pin a specific version.</summary>
     protected virtual string MocklabImage => "ghcr.io/burgan-tech/mocklab:latest";
 
