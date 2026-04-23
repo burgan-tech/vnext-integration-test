@@ -641,7 +641,7 @@ public class VNextTestEnvironment : IAsyncLifetime
             .WithBindMount(seedDir, "/app/seed")
             .WithEnvironment("Mocklab__SeedDirectory", "/app/seed")
             .WithWaitStrategy(Wait.ForUnixContainer()
-                .UntilHttpRequestIsSucceeded(r => r.ForPath("/_admin").ForPort(5000)))
+                .UntilHttpRequestIsSucceeded(r => r.ForPath("/health").ForPort(5000)))
             .Build();
 
         await _mocklab.StartAsync();
