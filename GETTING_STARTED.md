@@ -212,6 +212,45 @@ Keep only the YAML files you need to change and delete the rest. When the folder
 
 ## 4. Writing Your First Test
 
+### VNextApiResponse Model
+
+All `VNextApiClient` methods return a `VNextApiResponse` object that contains:
+
+| Property | Type | Description |
+|---|---|---|
+| `StatusCode` | `HttpStatusCode` | HTTP status code (e.g. `HttpStatusCode.OK`) |
+| `Headers` | `HttpResponseHeaders` | All response headers |
+| `Body` | `JsonElement` | Deserialized JSON response body |
+| `RawBody` | `string` | Raw response body string (useful for debugging) |
+| `IsSuccessStatusCode` | `bool` | `true` when status code is 2xx |
+
+```csharp
+var response = await Api.StartInstanceAsync("my-workflow", payload);
+
+// Access the JSON body
+var id = response.Body.GetProperty("id").GetString();
+
+// Check status code
+Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+// Inspect response headers
+var correlationId = response.Headers.GetValues("X-Correlation-Id").FirstOrDefault();
+```
+
+### Per-Request Headers
+
+All API methods accept an optional `headers` parameter to send additional HTTP headers with a specific request without affecting the client's default headers:
+
+```csharp
+var customHeaders = new Dictionary<string, string>
+{
+    ["X-Correlation-Id"] = "test-correlation-123",
+    ["X-Tenant-Id"]      = "tenant-abc"
+};
+
+var response = await Api.StartInstanceAsync("my-workflow", payload, headers: customHeaders);
+```
+
 ### 4.1 Add Payloads to TestDataBuilder
 
 Add factory methods to `Helpers/TestDataBuilder.cs` to represent your domain's workflows.
@@ -274,13 +313,14 @@ public class AppointmentTests : IntegrationTestBase
             startDateTime: "2026-06-01T10:00:00Z",
             endDateTime:   "2026-06-01T10:30:00Z");
 
-        var result = await Api.StartInstanceAsync(Workflow, payload);
+        var response = await Api.StartInstanceAsync(Workflow, payload);
+        Assert.True(response.IsSuccessStatusCode);
 
-        var id = result.GetProperty("id").GetString()!;
+        var id = response.Body.GetProperty("id").GetString()!;
         Assert.NotEmpty(id);
 
         var instance = await Api.GetInstanceAsync(Workflow, id);
-        var state = GetCurrentState(instance);
+        var state = GetCurrentState(instance.Body);
         Assert.Equal("pending", state);
     }
 
@@ -293,14 +333,14 @@ public class AppointmentTests : IntegrationTestBase
             "2026-06-02T09:00:00Z", "2026-06-02T09:30:00Z");
 
         var started = await Api.StartInstanceAsync(Workflow, payload);
-        var id = started.GetProperty("id").GetString()!;
+        var id = started.Body.GetProperty("id").GetString()!;
 
         // Run the cancel transition
         await Api.RunTransitionAsync(Workflow, id, "cancel",
             TestDataBuilder.CancelAppointment("Test cancellation"));
 
         var instance = await Api.GetInstanceAsync(Workflow, id);
-        Assert.Equal("cancelled", GetCurrentState(instance));
+        Assert.Equal("cancelled", GetCurrentState(instance.Body));
     }
 }
 ```
@@ -309,7 +349,8 @@ public class AppointmentTests : IntegrationTestBase
 
 - The test class constructor must accept a `VNextTestEnvironment environment` parameter — xUnit injects the collection fixture automatically.
 - The `Api` object is provided by `IntegrationTestBase`; no extra declaration is needed.
-- `GetCurrentState(instance)` handles both the flat `currentState` and the nested `metadata.currentState` response formats.
+- All API methods return a `VNextApiResponse` — access the JSON payload via `.Body` and the HTTP status via `.StatusCode`.
+- `GetCurrentState(instance.Body)` handles both the flat `currentState` and the nested `metadata.currentState` response formats.
 - Because all test classes inherit from `IntegrationTestBase` (which carries `[Collection("VNextIntegration")]`), they all share the same Docker stack — it is not restarted between tests.
 
 ### 4.3 Calling Domain Functions
@@ -318,16 +359,34 @@ To call a function directly without a workflow instance:
 
 ```csharp
 // Domain-level function (scope I)
-var slots = await Api.CallFunctionAsync("get-available-slots", new Dictionary<string, string>
+var slotsResponse = await Api.CallFunctionAsync("get-available-slots", new Dictionary<string, string>
 {
     ["date"]      = "2026-06-01",
     ["advisorId"] = "advisor-001"
 });
+var slots = slotsResponse.Body;
 
 // Workflow-level function (scope F)
-var rooms = await Api.CallWorkflowFunctionAsync(
+var roomsResponse = await Api.CallWorkflowFunctionAsync(
     "chat-room", "get-chat-rooms",
     new Dictionary<string, string> { ["userId"] = "user-001" });
+var rooms = roomsResponse.Body;
+```
+
+### 4.4 Instance Transitions and Retry
+
+**Listing transitions for an instance:**
+
+```csharp
+var transitionsResponse = await Api.GetInstanceTransitionsAsync("my-workflow", instanceId);
+var transitions = transitionsResponse.Body;
+```
+
+**Retrying a failed instance:**
+
+```csharp
+var retryResponse = await Api.RetryInstanceAsync("my-workflow", instanceId);
+Assert.True(retryResponse.IsSuccessStatusCode);
 ```
 
 ---
@@ -351,7 +410,8 @@ dotnet test
 5. Dapr placement + scheduler
 6. vNext orchestrator + daprd sidecar
 7. vNext execution + daprd sidecar
-8. Publishes domain definitions
+8. Mocklab + daprd sidecar *(skipped when `EnableMocklab` is `false`)*
+9. Publishes domain definitions *(skipped when `EnableDomainPublish` is `false`)*
 
 All long-running containers are cleaned up after the test run completes. The db-migrator exits on its own and is not included in the cleanup list.
 
@@ -367,7 +427,7 @@ VNEXT_BASE_URL=http://vnext-orchestrator.staging.example.com dotnet test
 
 In this mode:
 - Docker containers are not started
-- `LocalDomainPublisher` uploads domain definitions to the provided URL
+- `LocalDomainPublisher` uploads domain definitions to the provided URL (unless `EnableDomainPublish` is `false`)
 - Tests run directly against the external orchestrator
 
 ### 5.3 Configuring `test.runsettings`
@@ -607,10 +667,24 @@ protected override async Task StartMocklabAsync()
 **Disable Mocklab entirely** (if your domain does not use it):
 
 ```csharp
-protected override Task StartMocklabAsync() => Task.CompletedTask;
+// Infrastructure/VNextTestEnvironment.cs
+protected override bool EnableMocklab => false;
 ```
 
-### 6.7 Starting Additional Services (Custom Containers)
+When `EnableMocklab` is `false`, `StartMocklabAsync()` is not called and no Mocklab container is created.
+
+### 6.7 Disabling Domain Publish
+
+`LocalDomainPublisher` runs automatically after the environment is ready (both in local Testcontainers mode and against an external environment). If your tests supply definitions differently or don't need any, disable it:
+
+```csharp
+// Infrastructure/VNextTestEnvironment.cs
+protected override bool EnableDomainPublish => false;
+```
+
+> Both `EnableMocklab` and `EnableDomainPublish` default to `true`, so existing projects are not affected.
+
+### 6.8 Starting Additional Services (Custom Containers)
 
 Use `OnAfterEnvironmentReadyAsync` to start any service that your tests depend on but that is not part of the standard vNext stack. This hook is called after the orchestrator, execution, Mocklab, and domain publish steps have all completed successfully.
 
