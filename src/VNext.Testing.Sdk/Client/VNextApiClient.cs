@@ -1,4 +1,3 @@
-using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 
@@ -86,43 +85,73 @@ public class VNextApiClient : IDisposable
     /// Start a new workflow instance.
     /// POST /api/v{version}/{domain}/workflows/{workflow}/instances/start?sync=true
     /// </summary>
-    public virtual async Task<JsonElement> StartInstanceAsync(string workflow, object body)
+    public virtual async Task<VNextApiResponse> StartInstanceAsync(
+        string workflow, object body, Dictionary<string, string>? headers = null)
     {
         var url = BuildUrl($"workflows/{workflow}/instances/start", sync: true);
-        return await SendJsonAsync(HttpMethod.Post, url, body, "StartInstance");
+        return await SendJsonAsync(HttpMethod.Post, url, body, "StartInstance", headers);
     }
 
     /// <summary>
     /// Run a transition on an existing workflow instance.
     /// PATCH /api/v{version}/{domain}/workflows/{workflow}/instances/{id}/transitions/{transition}?sync=true
     /// </summary>
-    public virtual async Task<JsonElement> RunTransitionAsync(
-        string workflow, string instanceId, string transition, object? body = null)
+    public virtual async Task<VNextApiResponse> RunTransitionAsync(
+        string workflow, string instanceId, string transition,
+        object? body = null, Dictionary<string, string>? headers = null)
     {
         var url = BuildUrl($"workflows/{workflow}/instances/{instanceId}/transitions/{transition}", sync: true);
         var payload = body ?? new { attributes = new { } };
-        return await SendJsonAsync(HttpMethod.Patch, url, payload, "RunTransition");
+        return await SendJsonAsync(HttpMethod.Patch, url, payload, "RunTransition", headers);
     }
 
     /// <summary>
     /// Get a single workflow instance by ID.
     /// GET /api/v{version}/{domain}/workflows/{workflow}/instances/{id}
     /// </summary>
-    public virtual async Task<JsonElement> GetInstanceAsync(string workflow, string instanceId)
+    public virtual async Task<VNextApiResponse> GetInstanceAsync(
+        string workflow, string instanceId, Dictionary<string, string>? headers = null)
     {
         var url = BuildUrl($"workflows/{workflow}/instances/{instanceId}");
-        return await GetJsonAsync(url, "GetInstance");
+        return await GetJsonAsync(url, "GetInstance", headers);
     }
 
     /// <summary>
     /// List workflow instances with optional query parameters.
     /// GET /api/v{version}/{domain}/workflows/{workflow}/instances
     /// </summary>
-    public virtual async Task<JsonElement> ListInstancesAsync(
-        string workflow, Dictionary<string, string>? queryParams = null)
+    public virtual async Task<VNextApiResponse> ListInstancesAsync(
+        string workflow, Dictionary<string, string>? queryParams = null,
+        Dictionary<string, string>? headers = null)
     {
         var url = BuildUrl($"workflows/{workflow}/instances", queryParams: queryParams);
-        return await GetJsonAsync(url, "ListInstances");
+        return await GetJsonAsync(url, "ListInstances", headers);
+    }
+
+    /// <summary>
+    /// Get the list of transitions for a workflow instance.
+    /// GET /api/v{version}/{domain}/workflows/{workflow}/instances/{id}/transitions
+    /// </summary>
+    public virtual async Task<VNextApiResponse> GetInstanceTransitionsAsync(
+        string workflow, string instanceId,
+        Dictionary<string, string>? queryParams = null,
+        Dictionary<string, string>? headers = null)
+    {
+        var url = BuildUrl($"workflows/{workflow}/instances/{instanceId}/transitions", queryParams: queryParams);
+        return await GetJsonAsync(url, "GetInstanceTransitions", headers);
+    }
+
+    /// <summary>
+    /// Retry a failed workflow instance.
+    /// POST /api/v{version}/{domain}/workflows/{workflow}/instances/{id}/retry?sync=true
+    /// </summary>
+    public virtual async Task<VNextApiResponse> RetryInstanceAsync(
+        string workflow, string instanceId,
+        object? body = null, Dictionary<string, string>? headers = null)
+    {
+        var url = BuildUrl($"workflows/{workflow}/instances/{instanceId}/retry", sync: true);
+        var payload = body ?? new { };
+        return await SendJsonAsync(HttpMethod.Post, url, payload, "RetryInstance", headers);
     }
 
     // ========================================================================
@@ -133,33 +162,37 @@ public class VNextApiClient : IDisposable
     /// Call a domain-level function (scope I).
     /// GET /api/v{version}/{domain}/functions/{functionName}
     /// </summary>
-    public virtual async Task<JsonElement> CallFunctionAsync(
-        string functionName, Dictionary<string, string>? queryParams = null)
+    public virtual async Task<VNextApiResponse> CallFunctionAsync(
+        string functionName, Dictionary<string, string>? queryParams = null,
+        Dictionary<string, string>? headers = null)
     {
         var url = BuildUrl($"functions/{functionName}", queryParams: queryParams);
-        return await GetJsonAsync(url, "CallFunction");
+        return await GetJsonAsync(url, "CallFunction", headers);
     }
 
     /// <summary>
     /// Call a workflow-level function (scope F).
     /// GET /api/v{version}/{domain}/workflows/{workflow}/functions/{functionName}
     /// </summary>
-    public virtual async Task<JsonElement> CallWorkflowFunctionAsync(
-        string workflow, string functionName, Dictionary<string, string>? queryParams = null)
+    public virtual async Task<VNextApiResponse> CallWorkflowFunctionAsync(
+        string workflow, string functionName, Dictionary<string, string>? queryParams = null,
+        Dictionary<string, string>? headers = null)
     {
         var url = BuildUrl($"workflows/{workflow}/functions/{functionName}", queryParams: queryParams);
-        return await GetJsonAsync(url, "CallWorkflowFunction");
+        return await GetJsonAsync(url, "CallWorkflowFunction", headers);
     }
 
      /// <summary>
     /// Call a workflow instance-level function (scope I).
     /// GET /api/v{version}/{domain}/workflows/{workflow}/instances/{instanceId}/functions/{functionName}
     /// </summary>
-    public virtual async Task<JsonElement> CallInstanceFunctionAsync(
-        string workflow, string instanceId, string functionName, Dictionary<string, string>? queryParams = null)
+    public virtual async Task<VNextApiResponse> CallInstanceFunctionAsync(
+        string workflow, string instanceId, string functionName,
+        Dictionary<string, string>? queryParams = null,
+        Dictionary<string, string>? headers = null)
     {
         var url = BuildUrl($"workflows/{workflow}/instances/{instanceId}/functions/{functionName}", queryParams: queryParams);
-        return await GetJsonAsync(url, "CallInstanceFunction");
+        return await GetJsonAsync(url, "CallInstanceFunction", headers);
     }
 
     // ========================================================================
@@ -196,16 +229,35 @@ public class VNextApiClient : IDisposable
     /// <summary>
     /// Raw GET request to any path — useful for debugging or custom endpoints.
     /// </summary>
-    public virtual async Task<(int StatusCode, string Body)> GetRawAsync(string path)
+    public virtual async Task<VNextApiResponse> GetRawAsync(
+        string path, Dictionary<string, string>? headers = null)
     {
-        var response = await _http.GetAsync(path);
-        var body = await response.Content.ReadAsStringAsync();
-        return ((int)response.StatusCode, body);
+        var request = new HttpRequestMessage(HttpMethod.Get, path);
+        ApplyPerRequestHeaders(request, headers);
+        await OnBeforeRequestAsync(request);
+
+        var response = await _http.SendAsync(request);
+        var body = await response.ReadDecompressedContentAsync();
+        return new VNextApiResponse
+        {
+            StatusCode = response.StatusCode,
+            Headers = response.Headers,
+            RawBody = body
+        };
     }
 
     // ========================================================================
     // Internal helpers
     // ========================================================================
+
+    private static void ApplyPerRequestHeaders(
+        HttpRequestMessage request, Dictionary<string, string>? headers)
+    {
+        if (headers == null) return;
+
+        foreach (var (key, value) in headers)
+            request.Headers.TryAddWithoutValidation(key, value);
+    }
 
     private string BuildUrl(
         string path,
@@ -229,43 +281,68 @@ public class VNextApiClient : IDisposable
         return url;
     }
 
-    private async Task<JsonElement> SendJsonAsync(
-        HttpMethod method, string url, object body, string operation)
+    private async Task<VNextApiResponse> SendJsonAsync(
+        HttpMethod method, string url, object body, string operation,
+        Dictionary<string, string>? headers = null)
     {
         var json = JsonSerializer.Serialize(body, DefaultJsonOptions);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
         var request = new HttpRequestMessage(method, url) { Content = content };
+        ApplyPerRequestHeaders(request, headers);
         await OnBeforeRequestAsync(request);
 
         var response = await _http.SendAsync(request);
-        var responseBody = await response.Content.ReadAsStringAsync();
+        var responseBody = await response.ReadDecompressedContentAsync();
 
         if (!response.IsSuccessStatusCode)
         {
             await OnNonSuccessResponseAsync(operation, response.StatusCode, responseBody);
-            // If overrider didn't throw, return empty element
-            return default;
+            return new VNextApiResponse
+            {
+                StatusCode = response.StatusCode,
+                Headers = response.Headers,
+                RawBody = responseBody
+            };
         }
 
-        return JsonSerializer.Deserialize<JsonElement>(responseBody, DefaultJsonOptions);
+        return new VNextApiResponse
+        {
+            StatusCode = response.StatusCode,
+            Headers = response.Headers,
+            RawBody = responseBody,
+            Body = JsonSerializer.Deserialize<JsonElement>(responseBody, DefaultJsonOptions)
+        };
     }
 
-    private async Task<JsonElement> GetJsonAsync(string url, string operation)
+    private async Task<VNextApiResponse> GetJsonAsync(string url, string operation,
+        Dictionary<string, string>? headers = null)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, url);
+        ApplyPerRequestHeaders(request, headers);
         await OnBeforeRequestAsync(request);
 
         var response = await _http.SendAsync(request);
-        var responseBody = await response.Content.ReadAsStringAsync();
+        var responseBody = await response.ReadDecompressedContentAsync();
 
         if (!response.IsSuccessStatusCode)
         {
             await OnNonSuccessResponseAsync(operation, response.StatusCode, responseBody);
-            return default;
+            return new VNextApiResponse
+            {
+                StatusCode = response.StatusCode,
+                Headers = response.Headers,
+                RawBody = responseBody
+            };
         }
 
-        return JsonSerializer.Deserialize<JsonElement>(responseBody, DefaultJsonOptions);
+        return new VNextApiResponse
+        {
+            StatusCode = response.StatusCode,
+            Headers = response.Headers,
+            RawBody = responseBody,
+            Body = JsonSerializer.Deserialize<JsonElement>(responseBody, DefaultJsonOptions)
+        };
     }
 
     public void Dispose()

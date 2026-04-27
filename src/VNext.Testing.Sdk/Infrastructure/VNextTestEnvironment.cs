@@ -113,6 +113,21 @@ public class VNextTestEnvironment : IAsyncLifetime
     protected virtual string MocklabSeedDirectory =>
         Path.Combine(Directory.GetCurrentDirectory(), "Infrastructure", "MocklabSeed");
 
+    /// <summary>
+    /// Whether to start the Mocklab container and its Dapr sidecar.
+    /// Set to <c>false</c> to skip Mocklab when your tests don't need a mock HTTP service.
+    /// Default: <c>true</c>.
+    /// </summary>
+    protected virtual bool EnableMocklab => true;
+
+    /// <summary>
+    /// Whether to run LocalDomainPublisher after the environment is ready.
+    /// Set to <c>false</c> to skip domain publish when your tests supply definitions
+    /// differently or don't need any.
+    /// Default: <c>true</c>.
+    /// </summary>
+    protected virtual bool EnableDomainPublish => true;
+
     // ========================================================================
     // IAsyncLifetime
     // ========================================================================
@@ -126,8 +141,11 @@ public class VNextTestEnvironment : IAsyncLifetime
             _orchestrationUrl = externalUrl.TrimEnd('/');
             _useExternalEnvironment = true;
 
-            Console.WriteLine("[TestEnv] Publishing domain from local files...");
-            await LocalDomainPublisher.PublishAsync(OrchestratorBaseUrl, Domain);
+            if (EnableDomainPublish)
+            {
+                Console.WriteLine("[TestEnv] Publishing domain from local files...");
+                await LocalDomainPublisher.PublishAsync(OrchestratorBaseUrl, Domain);
+            }
 
             return;
         }
@@ -170,11 +188,17 @@ public class VNextTestEnvironment : IAsyncLifetime
         Console.WriteLine("[TestEnv] Starting vNext execution...");
         await StartExecutionAsync(executionComponentsDir, execSettings);
 
-        Console.WriteLine("[TestEnv] Starting Mocklab...");
-        await StartMocklabAsync();
+        if (EnableMocklab)
+        {
+            Console.WriteLine("[TestEnv] Starting Mocklab...");
+            await StartMocklabAsync();
+        }
 
-        Console.WriteLine("[TestEnv] Publishing domain from local files...");
-        await LocalDomainPublisher.PublishAsync(OrchestratorBaseUrl, Domain);
+        if (EnableDomainPublish)
+        {
+            Console.WriteLine("[TestEnv] Publishing domain from local files...");
+            await LocalDomainPublisher.PublishAsync(OrchestratorBaseUrl, Domain);
+        }
 
         Console.WriteLine($"[TestEnv] Environment ready! API: {OrchestratorBaseUrl}");
 

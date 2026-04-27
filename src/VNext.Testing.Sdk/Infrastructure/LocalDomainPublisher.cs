@@ -105,11 +105,6 @@ public static class LocalDomainPublisher
         }
 
         Console.WriteLine($"[DomainPublisher] Upload complete — success: {success}, failed: {failed}");
-
-        if (success == 0 && failed > 0)
-            throw new InvalidOperationException($"All {failed} component uploads failed. Check orchestrator logs.");
-
-        await ReInitializeAsync(http, orchestratorBaseUrl);
     }
 
     // ========================================================================
@@ -234,21 +229,6 @@ public static class LocalDomainPublisher
         {
             if (key is "domain" or "config" or "process") continue;
             if (obj[key] is JsonNode child) ReplaceDomain(child, targetDomain);
-        }
-    }
-
-    private static async Task ReInitializeAsync(HttpClient http, string orchestratorBaseUrl)
-    {
-        var url = $"{orchestratorBaseUrl.TrimEnd('/')}/api/v1/definitions/re-initialize";
-        Console.WriteLine("[DomainPublisher] Triggering re-initialize...");
-        try
-        {
-            var response = await http.GetAsync(url);
-            Console.WriteLine($"[DomainPublisher] Re-initialize: {response.StatusCode}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[DomainPublisher] Re-initialize warning: {ex.Message}");
         }
     }
 
