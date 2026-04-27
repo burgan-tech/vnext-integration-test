@@ -96,6 +96,14 @@ jobs:
         sed -i "s|<PackageVersion>.*</PackageVersion>|<PackageVersion>$VERSION</PackageVersion>|g" ./common.props
         echo "Updated common.props with version $VERSION"
     
+    - name: Stamp SDK version into template
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        TEMPLATE_JSON="src/VNext.Testing.Template/content/VNextIntegrationTestTemplate/.template.config/template.json"
+        # Use jq to update only the SdkVersion symbol's defaultValue
+        jq --arg v "$VERSION" '.symbols.SdkVersion.defaultValue = $v' "$TEMPLATE_JSON" > tmp.json && mv tmp.json "$TEMPLATE_JSON"
+        echo "Updated SdkVersion defaultValue to $VERSION in template.json"
+
     - name: Restore dependencies
       run: |
         dotnet restore ./VNext.Testing.slnx
