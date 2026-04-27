@@ -13,16 +13,16 @@ public class SmokeTests : IntegrationTestBase
     [Fact]
     public async Task HealthEndpoint_Returns200()
     {
-        var (statusCode, _) = await Api.GetRawAsync("/health");
-        Assert.Equal(200, statusCode);
+        var response = await Api.GetRawAsync("/health");
+        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]
     public async Task ListInstances_ReturnsValidResponse()
     {
         // Replace "my-workflow" with a workflow name that exists in your domain.
-        var result = await Api.ListInstancesAsync("my-workflow");
-        Assert.True(result.ValueKind != System.Text.Json.JsonValueKind.Null,
+        var response = await Api.ListInstancesAsync("my-workflow");
+        Assert.True(response.Body.ValueKind != System.Text.Json.JsonValueKind.Null,
             "Expected a non-null response from ListInstances");
     }
 }

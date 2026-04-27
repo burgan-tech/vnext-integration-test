@@ -55,6 +55,12 @@ public class VNextTestEnvironment : VNext.Testing.Sdk.Infrastructure.VNextTestEn
     // Optional — uncomment and override as needed
     // -------------------------------------------------------------------------
 
+    // /// <summary>Disable Mocklab if your domain doesn't need mock HTTP services.</summary>
+    // protected override bool EnableMocklab => false;
+
+    /// <summary>Disable domain publish if definitions are managed externally.</summary>
+    protected override bool EnableDomainPublish => false;
+
     // /// <summary>
     // /// Called after the full stack is ready. Start additional services here
     // /// (e.g. a custom microservice, a second mock server, a message broker).
