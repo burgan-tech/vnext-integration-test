@@ -18,7 +18,7 @@ namespace VNext.Testing.Sdk.Infrastructure;
 /// </summary>
 public class VNextTestEnvironment : IAsyncLifetime
 {
-    private INetwork? _network;
+    protected INetwork? _network;
 
     private PostgreSqlContainer? _postgres;
     private RedisContainer? _redis;
