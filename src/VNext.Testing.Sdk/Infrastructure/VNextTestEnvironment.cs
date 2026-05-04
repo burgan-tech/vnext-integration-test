@@ -1,3 +1,4 @@
+using System.Xml.Linq;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Networks;
@@ -134,7 +135,7 @@ public class VNextTestEnvironment : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var externalUrl = System.Environment.GetEnvironmentVariable("VNEXT_BASE_URL");
+        var externalUrl = ResolveEnvironmentVariable("VNEXT_BASE_URL");
         if (!string.IsNullOrEmpty(externalUrl))
         {
             Console.WriteLine($"[TestEnv] Using external vNext environment at {externalUrl}");
@@ -856,5 +857,80 @@ public class VNextTestEnvironment : IAsyncLifetime
 
             await File.WriteAllTextAsync(Path.Combine(targetDir, fileName), content);
         }
+    }
+
+    // ========================================================================
+    // .runsettings fallback — xUnit v3 does not inject <EnvironmentVariables>
+    // from .runsettings into the process, so we parse the file ourselves.
+    // ========================================================================
+
+    private static Dictionary<string, string>? _runSettingsCache;
+
+    /// <summary>
+    /// Reads an environment variable by name. Falls back to values defined in the
+    /// nearest <c>test.runsettings.local</c> or <c>test.runsettings</c> file when
+    /// the variable is not present in the actual process environment.
+    /// </summary>
+    private static string? ResolveEnvironmentVariable(string name)
+    {
+        var value = System.Environment.GetEnvironmentVariable(name);
+        if (!string.IsNullOrEmpty(value))
+            return value;
+
+        _runSettingsCache ??= LoadRunSettingsVariables();
+        _runSettingsCache.TryGetValue(name, out var fallback);
+        return fallback;
+    }
+
+    private static Dictionary<string, string> LoadRunSettingsVariables()
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        var baseDir = Directory.GetCurrentDirectory();
+        var candidates = new[] { "test.runsettings.local", "test.runsettings" };
+
+        string? filePath = null;
+        foreach (var candidate in candidates)
+        {
+            var path = Path.Combine(baseDir, candidate);
+            if (File.Exists(path))
+            {
+                filePath = path;
+                break;
+            }
+        }
+
+        if (filePath == null)
+        {
+            Console.WriteLine("[TestEnv] No .runsettings file found — relying on process environment only.");
+            return result;
+        }
+
+        try
+        {
+            var doc = XDocument.Load(filePath);
+            var envVars = doc.Descendants("EnvironmentVariables").FirstOrDefault();
+            if (envVars == null)
+            {
+                Console.WriteLine($"[TestEnv] .runsettings loaded from {filePath} but no <EnvironmentVariables> section found.");
+                return result;
+            }
+
+            foreach (var element in envVars.Elements())
+            {
+                var varName = element.Name.LocalName;
+                var varValue = element.Value;
+                if (!string.IsNullOrEmpty(varValue))
+                    result[varName] = varValue;
+            }
+
+            Console.WriteLine($"[TestEnv] Loaded {result.Count} variable(s) from {filePath}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[TestEnv] Warning: failed to parse {filePath}: {ex.Message}");
+        }
+
+        return result;
     }
 }
