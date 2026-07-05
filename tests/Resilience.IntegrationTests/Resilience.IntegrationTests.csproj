@@ -1,0 +1,68 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Resilience.IntegrationTests</RootNamespace>
+    <!--
+      Rider and `dotnet test` CLI pick up RunSettingsFilePath automatically.
+      test.runsettings.local is git-ignored and takes precedence for local overrides.
+      Falls back to test.runsettings when the local file does not exist.
+    -->
+    <RunSettingsFilePath Condition="Exists('$(MSBuildProjectDirectory)/test.runsettings.local')">$(MSBuildProjectDirectory)/test.runsettings.local</RunSettingsFilePath>
+    <RunSettingsFilePath Condition="!Exists('$(MSBuildProjectDirectory)/test.runsettings.local')">$(MSBuildProjectDirectory)/test.runsettings</RunSettingsFilePath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <!--
+      Local development: reference the SDK project directly so changes to the SDK
+      are picked up immediately without re-packing. Replace with a PackageReference
+      when consuming the published NuGet package.
+      <PackageReference Include="VNext.Testing.Sdk" Version="1.0.0" />
+    -->
+    <ProjectReference Include="..\..\src\VNext.Testing.Sdk\VNext.Testing.Sdk.csproj" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Dapr component overrides for the resilience stack (includes resiliency.yaml).
+      Files here take precedence over the SDK's embedded defaults.
+    -->
+    <Content Include="Infrastructure\DaprComponents\**\*.yaml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Config\**\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!--
+      MockLab seed collections, bind-mounted into the MockLab container.
+    -->
+    <Content Include="Infrastructure\MocklabSeed\**\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!--
+      Domain components (Domain/**) and vnext.config.json are intentionally NOT copied
+      to the output directory: LocalDomainPublisher walks up from the test assembly
+      directory and publishes straight from the project source tree.
+    -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="test.runsettings">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="test.runsettings.local">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

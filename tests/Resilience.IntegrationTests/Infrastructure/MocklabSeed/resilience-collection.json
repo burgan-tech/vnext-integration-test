@@ -1,0 +1,46 @@
+{
+  "collection": {
+    "name": "resilience",
+    "description": "Mock endpoints for the resilience integration test suite",
+    "color": "#ef4444"
+  },
+  "folders": [],
+  "mocks": [
+    {
+      "httpMethod": "POST",
+      "route": "api/resilience/check/ok",
+      "queryString": null,
+      "requestBody": "",
+      "statusCode": 200,
+      "responseBody": "{\"result\":\"ok\",\"referenceId\":\"{{ guid }}\",\"processedAt\":\"{{ iso_timestamp }}\"}",
+      "contentType": "application/json",
+      "description": "Always succeeds — happy-path task target.",
+      "delayMs": null,
+      "isActive": true,
+      "isSequential": false,
+      "folderIndex": null,
+      "rules": [],
+      "sequenceItems": []
+    },
+    {
+      "httpMethod": "POST",
+      "route": "api/resilience/check/flaky",
+      "queryString": null,
+      "requestBody": "",
+      "statusCode": 200,
+      "responseBody": "{\"result\":\"ok\",\"referenceId\":\"{{ guid }}\"}",
+      "contentType": "application/json",
+      "description": "Transient-fault simulation: first two calls return 503, third returns 200. Sequence repeats, so retry-driven tests stay deterministic within a few attempts.",
+      "delayMs": null,
+      "isActive": true,
+      "isSequential": true,
+      "folderIndex": null,
+      "rules": [],
+      "sequenceItems": [
+        { "order": 0, "statusCode": 503, "responseBody": "{\"error\":\"Service unavailable (simulated transient fault 1)\"}", "contentType": "application/json" },
+        { "order": 1, "statusCode": 503, "responseBody": "{\"error\":\"Service unavailable (simulated transient fault 2)\"}", "contentType": "application/json" },
+        { "order": 2, "statusCode": 200, "responseBody": "{\"result\":\"ok\",\"referenceId\":\"{{ guid }}\",\"attempt\":\"third\"}", "contentType": "application/json" }
+      ]
+    }
+  ]
+}

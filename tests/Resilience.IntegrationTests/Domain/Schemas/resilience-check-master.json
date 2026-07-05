@@ -1,0 +1,34 @@
+{
+  "key": "resilience-check-master",
+  "version": "1.0.0",
+  "domain": "resilience",
+  "flow": "sys-schemas",
+  "flowVersion": "1.0.0",
+  "tags": ["resilience", "master"],
+  "attributes": {
+    "type": "schema",
+    "labels": [
+      { "label": "Dayanıklılık Kontrolü", "language": "tr-TR" },
+      { "label": "Resilience Check", "language": "en-US" }
+    ],
+    "schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "urn:vnext:res:schema:resilience:resilience-check-master",
+      "title": "Resilience Check Master",
+      "description": "Full instance shape for the resilience-check workflow.",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string", "x-labels": { "tr": "Sipariş No", "en": "Order Id" } },
+        "amount": { "type": "number", "x-labels": { "tr": "Tutar", "en": "Amount" } },
+        "channel": { "type": "string", "x-labels": { "tr": "Kanal", "en": "Channel" } },
+        "checkResult": { "type": "string" },
+        "checkReference": { "type": "string" },
+        "checkCompletedAt": { "type": "string" },
+        "flakyResult": { "type": "string" },
+        "flakyReference": { "type": "string" },
+        "flakyCompletedAt": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

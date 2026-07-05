@@ -1,0 +1,14 @@
+{
+  "version": "1.0.0",
+  "description": "Resilience integration-test domain definition",
+  "domain": "resilience",
+  "paths": {
+    "componentsRoot": "Domain",
+    "workflows": "Workflows",
+    "tasks": "Tasks",
+    "schemas": "Schemas",
+    "views": "Views",
+    "functions": "Functions",
+    "extensions": "Extensions"
+  }
+}

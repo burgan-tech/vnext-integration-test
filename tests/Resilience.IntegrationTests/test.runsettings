@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <RunConfiguration>
+    <!-- The full stack takes a few minutes to pull images and become healthy. -->
+    <TestSessionTimeout>1800000</TestSessionTimeout>
+    <EnvironmentVariables>
+      <!--
+        VNEXT_BASE_URL: set to an existing orchestrator URL to skip Testcontainers
+        provisioning and run against an already-running environment.
+        Leave unset (default) to have Testcontainers spin up the full Docker stack.
+        Example: <VNEXT_BASE_URL>http://localhost:4201</VNEXT_BASE_URL>
+
+        VNEXT_IMAGE_VERSION: image tag for orchestrator/execution/db-migrator.
+        Read from the PROCESS environment only (export it in your shell) — defaults
+        to "resilience-local", the tag produced by scripts/build-vnext-branch-images.sh.
+      -->
+    </EnvironmentVariables>
+  </RunConfiguration>
+</RunSettings>

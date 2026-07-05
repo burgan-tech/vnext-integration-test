@@ -1,0 +1,19 @@
+{
+  "key": "flaky-call",
+  "version": "1.0.0",
+  "domain": "resilience",
+  "flow": "sys-tasks",
+  "flowVersion": "1.0.0",
+  "tags": ["resilience", "http", "mocklab", "transient-fault"],
+  "attributes": {
+    "type": "6",
+    "config": {
+      "url": "http://test-mocklab:5000/api/resilience/check/flaky",
+      "method": "POST",
+      "headers": { "Accept": "application/json", "Content-Type": "application/json" },
+      "body": {},
+      "timeoutSeconds": 10,
+      "validateSsl": true
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "key": "ok-call",
+  "version": "1.0.0",
+  "domain": "resilience",
+  "flow": "sys-tasks",
+  "flowVersion": "1.0.0",
+  "tags": ["resilience", "http", "mocklab"],
+  "attributes": {
+    "type": "6",
+    "config": {
+      "url": "http://test-mocklab:5000/api/resilience/check/ok",
+      "method": "POST",
+      "headers": { "Accept": "application/json", "Content-Type": "application/json" },
+      "body": {},
+      "timeoutSeconds": 10,
+      "validateSsl": true
+    }
+  }
+}

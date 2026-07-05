@@ -1,0 +1,29 @@
+apiVersion: dapr.io/v1alpha1
+kind: Resiliency
+metadata:
+  name: vnext-orchestration-resiliency
+spec:
+  policies:
+    retries:
+      # Connection-level failures ONLY (connect refused / DNS / socket reset / sidecar
+      # unavailable). App HTTP responses — including 5xx — are deliberately NOT retried at
+      # this layer: a received response means the task ran and may already have produced
+      # side effects, so the re-run decision belongs to the user-defined error boundary.
+      connectionRetry:
+        policy: exponential
+        maxInterval: 5s
+        maxRetries: 3
+    circuitBreakers:
+      # Fast-fail when the Execution host is down instead of burning the per-task
+      # invocation timeout repeatedly inside the job budget.
+      invocationBreaker:
+        maxRequests: 1
+        timeout: 30s
+        trip: consecutiveFailures >= 5
+  targets:
+    apps:
+      # Orchestration → Execution task invocation. The test environment registers the
+      # execution sidecar as "vnext-execution-app-{Domain}"; Domain here is "resilience".
+      vnext-execution-app-resilience:
+        retry: connectionRetry
+        circuitBreaker: invocationBreaker

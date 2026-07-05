@@ -1,0 +1,220 @@
+{
+  "key": "resilience-check",
+  "version": "1.0.0",
+  "domain": "resilience",
+  "flow": "sys-flows",
+  "flowVersion": "1.0.0",
+  "tags": [
+    "resilience",
+    "integration-test"
+  ],
+  "attributes": {
+    "type": "F",
+    "labels": [
+      {
+        "label": "Dayanıklılık Kontrolü",
+        "language": "tr-TR"
+      },
+      {
+        "label": "Resilience Check",
+        "language": "en-US"
+      }
+    ],
+    "errorBoundary": {
+      "onError": [
+        {
+          "action": 0,
+          "priority": 100
+        }
+      ]
+    },
+    "schema": {
+      "key": "resilience-check-master",
+      "domain": "resilience",
+      "flow": "sys-schemas",
+      "version": "1.0.0"
+    },
+    "startTransition": {
+      "key": "start",
+      "target": "ready",
+      "triggerType": 0,
+      "versionStrategy": "Minor",
+      "labels": [
+        {
+          "label": "Başlat",
+          "language": "tr-TR"
+        },
+        {
+          "label": "Start",
+          "language": "en-US"
+        }
+      ]
+    },
+    "states": [
+      {
+        "key": "ready",
+        "stateType": 1,
+        "versionStrategy": "Minor",
+        "labels": [
+          {
+            "label": "Hazır",
+            "language": "tr-TR"
+          },
+          {
+            "label": "Ready",
+            "language": "en-US"
+          }
+        ],
+        "transitions": [
+          {
+            "key": "proceed",
+            "target": "reviewing",
+            "triggerType": 0,
+            "versionStrategy": "Minor",
+            "labels": [
+              {
+                "label": "İlerle",
+                "language": "tr-TR"
+              },
+              {
+                "label": "Proceed",
+                "language": "en-US"
+              }
+            ]
+          },
+          {
+            "key": "stable-step",
+            "target": "completed",
+            "triggerType": 0,
+            "versionStrategy": "Minor",
+            "labels": [
+              {
+                "label": "Kararlı Adım",
+                "language": "tr-TR"
+              },
+              {
+                "label": "Stable Step",
+                "language": "en-US"
+              }
+            ],
+            "onExecutionTasks": [
+              {
+                "order": 1,
+                "task": {
+                  "key": "ok-call",
+                  "domain": "resilience",
+                  "flow": "sys-tasks",
+                  "version": "1.0.0"
+                },
+                "mapping": {
+                  "type": "L",
+                  "location": "./src/OkCallMapping.csx",
+                  "encoding": "NAT",
+                  "code": "using System;\nusing System.Collections.Generic;\nusing System.Threading.Tasks;\nusing BBT.Workflow.Scripting;\nusing BBT.Workflow.Definitions;\n\n/// <summary>\n/// onExecution HTTP mapping for ok-call (Task type 6) on the stable-step transition.\n/// Sends the instance orderId to MockLab and writes the mock's result onto instance data.\n/// </summary>\npublic class OkCallMapping : ScriptBase, IMapping\n{\n    public Task<ScriptResponse> InputHandler(WorkflowTask task, ScriptContext context)\n    {\n        var httpTask = task as HttpTask;\n        if (httpTask == null)\n            throw new InvalidOperationException(\"Task must be an HttpTask\");\n\n        var data = context.Instance?.Data;\n        var orderId = data?.orderId?.ToString();\n\n        httpTask.SetBody(new { orderId = orderId ?? string.Empty });\n        httpTask.SetHeaders(new Dictionary<string, string?>\n        {\n            [\"Accept\"] = \"application/json\",\n            [\"Content-Type\"] = \"application/json\"\n        });\n\n        return Task.FromResult(new ScriptResponse());\n    }\n\n    public Task<ScriptResponse> OutputHandler(ScriptContext context)\n    {\n        var payload = context.Body?.data ?? context.Body;\n        return Task.FromResult(new ScriptResponse\n        {\n            Data = new\n            {\n                checkResult = payload?.result?.ToString() ?? \"unknown\",\n                checkReference = payload?.referenceId?.ToString(),\n                checkCompletedAt = DateTime.UtcNow.ToString(\"o\")\n            },\n            Tags = new[] { \"resilience\", \"ok-call\" }\n        });\n    }\n}\n"
+                }
+              }
+            ]
+          },
+          {
+            "key": "flaky-step",
+            "target": "completed",
+            "triggerType": 0,
+            "versionStrategy": "Minor",
+            "labels": [
+              {
+                "label": "Kırılgan Adım",
+                "language": "tr-TR"
+              },
+              {
+                "label": "Flaky Step",
+                "language": "en-US"
+              }
+            ],
+            "onExecutionTasks": [
+              {
+                "order": 1,
+                "task": {
+                  "key": "flaky-call",
+                  "domain": "resilience",
+                  "flow": "sys-tasks",
+                  "version": "1.0.0"
+                },
+                "mapping": {
+                  "type": "L",
+                  "location": "./src/FlakyCallMapping.csx",
+                  "encoding": "NAT",
+                  "code": "using System;\nusing System.Collections.Generic;\nusing System.Threading.Tasks;\nusing BBT.Workflow.Scripting;\nusing BBT.Workflow.Definitions;\n\n/// <summary>\n/// onExecution HTTP mapping for flaky-call (Task type 6) on the flaky-step transition.\n/// MockLab serves this endpoint sequentially (503, 503, 200) so the first attempts fail\n/// with a transient status and the instance faults; the /retry endpoint drives re-runs.\n/// </summary>\npublic class FlakyCallMapping : ScriptBase, IMapping\n{\n    public Task<ScriptResponse> InputHandler(WorkflowTask task, ScriptContext context)\n    {\n        var httpTask = task as HttpTask;\n        if (httpTask == null)\n            throw new InvalidOperationException(\"Task must be an HttpTask\");\n\n        var data = context.Instance?.Data;\n        var orderId = data?.orderId?.ToString();\n\n        httpTask.SetBody(new { orderId = orderId ?? string.Empty });\n        httpTask.SetHeaders(new Dictionary<string, string?>\n        {\n            [\"Accept\"] = \"application/json\",\n            [\"Content-Type\"] = \"application/json\"\n        });\n\n        return Task.FromResult(new ScriptResponse());\n    }\n\n    public Task<ScriptResponse> OutputHandler(ScriptContext context)\n    {\n        var statusCode = 0;\n        try { statusCode = (int)(context.Body?.statusCode ?? 0); } catch { statusCode = 0; }\n\n        var payload = context.Body?.data ?? context.Body;\n        var succeeded = statusCode == 0 || (statusCode >= 200 && statusCode < 300);\n\n        return Task.FromResult(new ScriptResponse\n        {\n            Data = new\n            {\n                flakyResult = payload?.result?.ToString() ?? \"unknown\",\n                flakyReference = payload?.referenceId?.ToString(),\n                flakyCompletedAt = DateTime.UtcNow.ToString(\"o\")\n            },\n            Tags = succeeded\n                ? new[] { \"resilience\", \"flaky-call\", \"success\" }\n                : new[] { \"resilience\", \"flaky-call\", \"failure\" }\n        });\n    }\n}\n"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "reviewing",
+        "stateType": 2,
+        "versionStrategy": "Minor",
+        "labels": [
+          {
+            "label": "İncelemede",
+            "language": "tr-TR"
+          },
+          {
+            "label": "Reviewing",
+            "language": "en-US"
+          }
+        ],
+        "transitions": [
+          {
+            "key": "finish",
+            "target": "completed",
+            "triggerType": 0,
+            "versionStrategy": "Minor",
+            "labels": [
+              {
+                "label": "Bitir",
+                "language": "tr-TR"
+              },
+              {
+                "label": "Finish",
+                "language": "en-US"
+              }
+            ]
+          },
+          {
+            "key": "back",
+            "target": "ready",
+            "triggerType": 0,
+            "versionStrategy": "Minor",
+            "labels": [
+              {
+                "label": "Geri",
+                "language": "tr-TR"
+              },
+              {
+                "label": "Back",
+                "language": "en-US"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "completed",
+        "stateType": 3,
+        "subType": 1,
+        "versionStrategy": "Minor",
+        "labels": [
+          {
+            "label": "Tamamlandı",
+            "language": "tr-TR"
+          },
+          {
+            "label": "Completed",
+            "language": "en-US"
+          }
+        ]
+      }
+    ]
+  }
+}
