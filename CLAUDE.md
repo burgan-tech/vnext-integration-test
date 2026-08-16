@@ -136,8 +136,10 @@ the branch name, stamps `common.props` and `template.json`, packs, publishes, an
 NuGet.org authentication uses **Trusted Publishing (OIDC)** — `NuGet/login@v1` exchanges the job's
 GitHub OIDC token for a short-lived key. There is no `NUGET_API_KEY` secret. This depends on
 `id-token: write` in the workflow permissions, a trusted-publishing policy on NuGet.org bound to
-this repo and workflow, and a `NUGET_USER` repository variable. Do not reintroduce an API-key
-secret.
+this repo and workflow, and `NUGET_USER` naming the NuGet.org account that owns the policy. The
+workflow resolves it as `vars.NUGET_USER || secrets.NUGET_USER` — `vars` and `secrets` are
+separate stores, and this repo has historically had it in the Secrets tab. Do not reintroduce an
+API-key secret.
 
 ## Conventions for changes
 

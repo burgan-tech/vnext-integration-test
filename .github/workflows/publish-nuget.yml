@@ -193,25 +193,32 @@ jobs:
     #
     # Requires, on NuGet.org (Account → Trusted Publishing):
     #   - a trusted-publishing policy for this repository/workflow
-    # Requires, in this repository (Settings → Variables):
-    #   - NUGET_USER = the NuGet.org account that owns the policy
+    # Requires, in this repository:
+    #   - NUGET_USER = the NuGet.org account that owns the policy.
+    #     Read from Variables first, then Secrets, so it works wherever it
+    #     was set. The account name is not sensitive, so a Variable is the
+    #     better home — a Secret is masked as *** in the logs.
     # ------------------------------------------------------------------
     - name: Verify Trusted Publishing configuration
+      env:
+        NUGET_USER: ${{ vars.NUGET_USER || secrets.NUGET_USER }}
       run: |
-        if [ -z "${{ vars.NUGET_USER }}" ]; then
-          echo "❌ Error: repository variable 'NUGET_USER' is not configured"
+        if [ -z "$NUGET_USER" ]; then
+          echo "❌ Error: 'NUGET_USER' is not configured as a variable or a secret"
           echo "Set it to the NuGet.org account (user or organization) that owns the"
           echo "trusted-publishing policy for this repository:"
           echo "  Settings → Secrets and variables → Actions → Variables → New repository variable"
+          echo "Note: 'vars' and 'secrets' are separate stores — a value added under the"
+          echo "Secrets tab is not readable as a variable, and vice versa."
           exit 1
         fi
-        echo "✅ Publishing as NuGet.org account: ${{ vars.NUGET_USER }}"
+        echo "✅ NUGET_USER resolved (masked as *** below if stored as a secret): $NUGET_USER"
 
     - name: NuGet login (Trusted Publishing)
       id: nuget-login
       uses: NuGet/login@v1
       with:
-        user: ${{ vars.NUGET_USER }}
+        user: ${{ vars.NUGET_USER || secrets.NUGET_USER }}
 
     - name: Publish to NuGet.org
       env:
