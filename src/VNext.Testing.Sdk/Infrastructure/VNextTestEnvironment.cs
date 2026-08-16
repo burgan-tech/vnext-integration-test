@@ -30,6 +30,10 @@ public class VNextTestEnvironment : IAsyncLifetime
     private IContainer? _vnextAppDapr;
     private IContainer? _vnextExecution;
     private IContainer? _vnextExecutionDapr;
+    private IContainer? _vnextInbox;
+    private IContainer? _vnextInboxDapr;
+    private IContainer? _vnextOutbox;
+    private IContainer? _vnextOutboxDapr;
     private IContainer? _mocklab;
     private IContainer? _mocklabDapr;
 
@@ -51,11 +55,10 @@ public class VNextTestEnvironment : IAsyncLifetime
     private const string SchedulerAlias = "test-dapr-scheduler";
     private const string OrchestratorAlias = "test-vnext-app";
     private const string ExecutionAlias = "test-vnext-execution";
-    private const string OrchestratorDaprAlias = "test-vnext-app-dapr";
-    private const string ExecutionDaprAlias = "test-vnext-execution-dapr";
     private const string MigratorAlias = "test-vnext-db-migrator";
+    private const string InboxAlias = "test-vnext-inbox";
+    private const string OutboxAlias = "test-vnext-outbox";
     private const string MocklabAlias = "test-mocklab";
-    private const string MocklabDaprAlias = "test-mocklab-dapr";
 
     // ========================================================================
     // Virtual configuration properties — override in your test project
@@ -122,6 +125,15 @@ public class VNextTestEnvironment : IAsyncLifetime
     protected virtual bool EnableMocklab => true;
 
     /// <summary>
+    /// Host name substituted for the <c>MOCKLAB_HOST</c> placeholder in <c>appsettings.*.json</c>
+    /// and for <c>MOCKLAB_HOST</c> / <c>MOCKOON_HOST</c> in Dapr component YAML.
+    /// Defaults to the built-in Mocklab container's network alias (<c>test-mocklab</c>),
+    /// which serves HTTP on port 5000 inside the test network.
+    /// Override when your tests point at a differently-hosted mock server.
+    /// </summary>
+    protected virtual string MocklabHost => MocklabAlias;
+
+    /// <summary>
     /// Whether to run LocalDomainPublisher after the environment is ready.
     /// Set to <c>false</c> to skip domain publish when your tests supply definitions
     /// differently or don't need any.
@@ -171,11 +183,15 @@ public class VNextTestEnvironment : IAsyncLifetime
         var orchestrationComponentsDir = await PrepareDaprComponentsAsync("orchestration");
         var executionComponentsDir = await PrepareDaprComponentsAsync("execution");
         var migratorComponentsDir = await PrepareDaprComponentsAsync("db-migrator");
+        var inboxComponentsDir = await PrepareDaprComponentsAsync("inbox");
+        var outboxComponentsDir = await PrepareDaprComponentsAsync("outbox");
 
         Console.WriteLine("[TestEnv] Preparing appsettings...");
         var orchSettings = await PrepareAppSettingsAsync("appsettings.orchestration.json");
         var execSettings = await PrepareAppSettingsAsync("appsettings.execution.json");
         var migratorSettings = await PrepareAppSettingsAsync("appsettings.db-migrator.json");
+        var inboxSettings = await PrepareAppSettingsAsync("appsettings.inbox.json");
+        var outboxSettings = await PrepareAppSettingsAsync("appsettings.outbox.json");
 
         Console.WriteLine("[TestEnv] Starting Dapr infrastructure...");
         await StartDaprInfraAsync();
@@ -188,6 +204,12 @@ public class VNextTestEnvironment : IAsyncLifetime
 
         Console.WriteLine("[TestEnv] Starting vNext execution...");
         await StartExecutionAsync(executionComponentsDir, execSettings);
+        
+        Console.WriteLine("[TestEnv] Starting vNext inbox...");
+        await StartInboxAsync(inboxComponentsDir, inboxSettings);
+        
+        Console.WriteLine("[TestEnv] Starting vNext outbox...");
+        await StartOutboxAsync(outboxComponentsDir, outboxSettings);
 
         if (EnableMocklab)
         {
@@ -219,6 +241,8 @@ public class VNextTestEnvironment : IAsyncLifetime
         var containers = new IContainer?[]
         {
             _mocklabDapr, _mocklab,
+            _vnextOutboxDapr, _vnextOutbox,
+            _vnextInboxDapr, _vnextInbox,
             _vnextExecutionDapr, _vnextExecution,
             _vnextAppDapr, _vnextApp,
             _daprScheduler, _daprPlacement,
@@ -404,22 +428,33 @@ public class VNextTestEnvironment : IAsyncLifetime
 
     /// <summary>
     /// Replaces well-known placeholders in Dapr component YAML.
+    ///
+    /// <para>
+    /// <c>APP_DOMAIN</c> resolves to <see cref="Domain"/>. Dapr <c>Resiliency</c> policies address
+    /// their targets by app-id, and every vNext app-id carries the domain as a suffix
+    /// (<c>vnext-app-{domain}</c>, <c>vnext-execution-app-{domain}</c>, …), so a
+    /// <c>targets.apps</c> key must be written as e.g. <c>vnext-execution-app-APP_DOMAIN</c>.
+    /// A key without the suffix silently matches nothing.
+    /// </para>
+    ///
     /// Override to add domain-specific placeholder substitutions.
     /// </summary>
     protected virtual string ApplyDaprComponentSubstitutions(string content, string role)
     {
         return content
+            .Replace("APP_DOMAIN", Domain)
             .Replace("REDIS_HOST", RedisAlias)
             .Replace("VAULT_HOST", VaultAlias)
+            .Replace("MOCKLAB_HOST", GetMockoonAlias(role))
             .Replace("MOCKOON_HOST", GetMockoonAlias(role));
     }
 
     /// <summary>
-    /// Returns the network alias for the mock HTTP server used by the execution binding.
-    /// Defaults to the built-in Mocklab container alias (<c>test-mocklab</c>).
-    /// Override if you use a differently-configured mock server.
+    /// Returns the network alias for the mock HTTP server used by Dapr components of a role.
+    /// Defaults to <see cref="MocklabHost"/> (the built-in Mocklab container alias).
+    /// Override if a specific role should target a differently-configured mock server.
     /// </summary>
-    protected virtual string GetMockoonAlias(string role) => MocklabAlias;
+    protected virtual string GetMockoonAlias(string role) => MocklabHost;
 
     // ========================================================================
     // Virtual hook: appsettings
@@ -452,7 +487,8 @@ public class VNextTestEnvironment : IAsyncLifetime
         return content
             .Replace("POSTGRES_HOST", PostgresAlias)
             .Replace("POSTGRES_DB", DatabaseName)
-            .Replace("REDIS_HOST", RedisAlias);
+            .Replace("REDIS_HOST", RedisAlias)
+            .Replace("MOCKLAB_HOST", MocklabHost);
     }
 
     // ========================================================================
@@ -537,6 +573,50 @@ public class VNextTestEnvironment : IAsyncLifetime
         );
 
         Console.WriteLine($"[TestEnv] Dapr placement + scheduler started.");
+    }
+    
+    /// <summary>
+    /// Returns the environment variables injected into the inbox container.
+    /// Override to add or replace variables (e.g. custom Dapr store names).
+    /// </summary>
+    protected virtual Dictionary<string, string> GetInboxEnvironment()
+    {
+        return new Dictionary<string, string>
+        {
+            ["ASPNETCORE_ENVIRONMENT"] = "Development",
+            ["APP_DOMAIN"] = Domain,
+            ["DAPR_APP_ID"] = $"vnext-inbox-{Domain}",
+            ["DAPR_HTTP_PORT"] = "44110",
+            ["DAPR_GRPC_PORT"] = "44111",
+            ["DAPR_PLACEMENT_HOST"] = $"{PlacementAlias}:50005",
+            ["DAPR_STATE_STORE_NAME"] = "vnext-state",
+            ["DAPR_SECRET_STORE_NAME"] = "vnext-secret",
+            ["DAPR_LOCK_STORE_NAME"] = "vnext-lock",
+            ["DAPR_PUBSUB_STORE_NAME"] = "vnext-pubsub",
+            ["DAPR_PUBSUB_BROADCAST_STORE_NAME"] = "vnext-pubsub-broadcast"
+        };
+    }
+    
+    /// <summary>
+    /// Returns the environment variables injected into the outbox container.
+    /// Override to add or replace variables (e.g. custom Dapr store names).
+    /// </summary>
+    protected virtual Dictionary<string, string> GetOutboxEnvironment()
+    {
+        return new Dictionary<string, string>
+        {
+            ["ASPNETCORE_ENVIRONMENT"] = "Development",
+            ["APP_DOMAIN"] = Domain,
+            ["DAPR_APP_ID"] = $"vnext-outbox-{Domain}",
+            ["DAPR_HTTP_PORT"] = "45110",
+            ["DAPR_GRPC_PORT"] = "45111",
+            ["DAPR_PLACEMENT_HOST"] = $"{PlacementAlias}:50005",
+            ["DAPR_STATE_STORE_NAME"] = "vnext-state",
+            ["DAPR_SECRET_STORE_NAME"] = "vnext-secret",
+            ["DAPR_LOCK_STORE_NAME"] = "vnext-lock",
+            ["DAPR_PUBSUB_STORE_NAME"] = "vnext-pubsub",
+            ["DAPR_PUBSUB_BROADCAST_STORE_NAME"] = "vnext-pubsub-broadcast"
+        };
     }
 
     // ========================================================================
@@ -639,6 +719,104 @@ public class VNextTestEnvironment : IAsyncLifetime
         Console.WriteLine("[TestEnv] Execution Dapr sidecar started");
     }
 
+    // ========================================================================
+    // vNext Inbox
+    // ========================================================================
+
+    private async Task StartInboxAsync(string componentsDir, string settingsPath)
+    {
+        var inboxBuilder = new ContainerBuilder()
+            .WithName("vnext-inbox")
+            .WithImage($"{VNextImage}/inbox:{VNextImageVersion}")
+            .WithNetwork(_network)
+            .WithNetworkAliases(InboxAlias)
+            .WithPortBinding(5000, true)
+            .WithBindMount(settingsPath, "/app/appsettings.Development.json")
+            .WithWaitStrategy(Wait.ForUnixContainer()
+                .UntilHttpRequestIsSucceeded(r => r.ForPath("/health").ForPort(5000)));
+
+        foreach (var (key, value) in GetInboxEnvironment())
+            inboxBuilder = inboxBuilder.WithEnvironment(key, value);
+
+        _vnextInbox = inboxBuilder.Build();
+        await _vnextInbox.StartAsync();
+        Console.WriteLine("[TestEnv] Inbox healthy");
+
+        _vnextInboxDapr = new ContainerBuilder()
+            .WithName("vnext-inbox-dapr")
+            .WithImage(DaprSidecarImage)
+            .WithCreateParameterModifier(p =>
+            {
+                p.HostConfig.NetworkMode = $"container:{_vnextInbox.Id}";
+            })
+            .WithBindMount(componentsDir, "/components")
+            .WithCommand(
+                "./daprd",
+                "--app-id", $"vnext-inbox-{Domain}",
+                "--app-port", "5000",
+                "--resources-path", "/components",
+                "--dapr-grpc-port", "44111",
+                "--dapr-http-port", "44110",
+                "--scheduler-host-address", $"{SchedulerAlias}:50007",
+                "--placement-host-address", $"{PlacementAlias}:50005",
+                "--log-level", "warn")
+            .DependsOn(_vnextInbox)
+            .WithWaitStrategy(Wait.ForUnixContainer())
+            .Build();
+
+        await _vnextInboxDapr.StartAsync();
+        Console.WriteLine("[TestEnv] Inbox Dapr sidecar started");
+    }
+    
+    // ========================================================================
+    // vNext Outbox
+    // ========================================================================
+
+    private async Task StartOutboxAsync(string componentsDir, string settingsPath)
+    {
+        var outboxBuilder = new ContainerBuilder()
+            .WithName("vnext-outbox")
+            .WithImage($"{VNextImage}/outbox:{VNextImageVersion}")
+            .WithNetwork(_network)
+            .WithNetworkAliases(OutboxAlias)
+            .WithPortBinding(5000, true)
+            .WithBindMount(settingsPath, "/app/appsettings.Development.json")
+            .WithWaitStrategy(Wait.ForUnixContainer()
+                .UntilHttpRequestIsSucceeded(r => r.ForPath("/health").ForPort(5000)));
+
+        foreach (var (key, value) in GetOutboxEnvironment())
+            outboxBuilder = outboxBuilder.WithEnvironment(key, value);
+
+        _vnextOutbox = outboxBuilder.Build();
+        await _vnextOutbox.StartAsync();
+        Console.WriteLine("[TestEnv] Outbox healthy");
+
+        _vnextOutboxDapr = new ContainerBuilder()
+            .WithName("vnext-outbox-dapr")
+            .WithImage(DaprSidecarImage)
+            .WithCreateParameterModifier(p =>
+            {
+                p.HostConfig.NetworkMode = $"container:{_vnextOutbox.Id}";
+            })
+            .WithBindMount(componentsDir, "/components")
+            .WithCommand(
+                "./daprd",
+                "--app-id", $"vnext-outbox-{Domain}",
+                "--app-port", "5000",
+                "--resources-path", "/components",
+                "--dapr-grpc-port", "45111",
+                "--dapr-http-port", "45110",
+                "--scheduler-host-address", $"{SchedulerAlias}:50007",
+                "--placement-host-address", $"{PlacementAlias}:50005",
+                "--log-level", "warn")
+            .DependsOn(_vnextOutbox)
+            .WithWaitStrategy(Wait.ForUnixContainer())
+            .Build();
+
+        await _vnextOutboxDapr.StartAsync();
+        Console.WriteLine("[TestEnv] Outbox Dapr sidecar started");
+    }
+    
     // ========================================================================
     // Mocklab (mock HTTP service + Dapr sidecar — long-lived, disposed with the stack)
     // ========================================================================
