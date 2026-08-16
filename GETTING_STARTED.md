@@ -630,12 +630,25 @@ The inbox and outbox workers have the same hooks — `GetInboxEnvironment()` and
 protected override Dictionary<string, string> GetInboxEnvironment()
 {
     var env = base.GetInboxEnvironment();
-    env["DAPR_PUBSUB_STORE_NAME"] = "vnext-pubsub";
+    // Requires a component named vnext-pubsub-morphfx in Infrastructure/DaprComponents/inbox/
+    env["DAPR_PUBSUB_STORE_NAME"] = "vnext-pubsub-morphfx";
     return env;
 }
 ```
 
-Each role's defaults set `APP_DOMAIN`, `DAPR_APP_ID`, the sidecar ports, and the five Dapr store names (`vnext-state`, `vnext-secret`, `vnext-lock`, `vnext-pubsub`, `vnext-pubsub-broadcast`). A store name here must match the `metadata.name` of a component YAML in the corresponding role folder, otherwise the sidecar starts but the app cannot resolve the component.
+Each role's defaults set `APP_DOMAIN`, `DAPR_APP_ID`, the sidecar ports, and that role's Dapr store names:
+
+| Variable | orchestration | execution | inbox | outbox | db-migrator |
+|---|:-:|:-:|:-:|:-:|:-:|
+| `DAPR_STATE_STORE_NAME` = `vnext-state` | ✔ | ✔ | ✔ | ✔ | — |
+| `DAPR_SECRET_STORE_NAME` = `vnext-secret` | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `DAPR_LOCK_STORE_NAME` = `vnext-lock` | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `DAPR_PUBSUB_STORE_NAME` = `vnext-pubsub` | ✔ | ✔ | ✔ | ✔ | — |
+| `DAPR_PUBSUB_BROADCAST_STORE_NAME` = `vnext-pubsub-broadcast` | ✔ | ✔ | ✔ | — | — |
+
+The outbox has no broadcast store: it only drains the `sys_queues` outbox table to the regular pubsub, so `outbox/` ships no `pubsub-broadcast.yaml`.
+
+> Every store name must match the `metadata.name` of a component YAML in that role's folder. Nothing validates this at startup — the sidecar comes up fine and the failure only surfaces when the app first reaches for the component. If you set a store name here, add or rename the matching YAML in the same commit.
 
 ### 6.3 Adding an Auth Header
 

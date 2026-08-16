@@ -600,6 +600,13 @@ public class VNextTestEnvironment : IAsyncLifetime
     /// <summary>
     /// Returns the environment variables injected into the outbox container.
     /// Override to add or replace variables (e.g. custom Dapr store names).
+    ///
+    /// <para>
+    /// Unlike the other roles this sets no <c>DAPR_PUBSUB_BROADCAST_STORE_NAME</c>: the outbox
+    /// only drains the <c>sys_queues</c> outbox table to the regular pubsub, so the
+    /// <c>outbox/</c> component folder ships no <c>pubsub-broadcast.yaml</c>. Adding the variable
+    /// back without also adding the component would name a component that does not exist.
+    /// </para>
     /// </summary>
     protected virtual Dictionary<string, string> GetOutboxEnvironment()
     {
@@ -614,8 +621,7 @@ public class VNextTestEnvironment : IAsyncLifetime
             ["DAPR_STATE_STORE_NAME"] = "vnext-state",
             ["DAPR_SECRET_STORE_NAME"] = "vnext-secret",
             ["DAPR_LOCK_STORE_NAME"] = "vnext-lock",
-            ["DAPR_PUBSUB_STORE_NAME"] = "vnext-pubsub",
-            ["DAPR_PUBSUB_BROADCAST_STORE_NAME"] = "vnext-pubsub-broadcast"
+            ["DAPR_PUBSUB_STORE_NAME"] = "vnext-pubsub"
         };
     }
 
