@@ -19,6 +19,7 @@ on:
 permissions:
   contents: write
   packages: write
+  id-token: write   # required for NuGet.org Trusted Publishing (OIDC)
 
 jobs:
   build-and-publish:
@@ -185,18 +186,44 @@ jobs:
         path: packages/
         retention-days: 30
     
-    - name: Publish to NuGet.org
-      env:
-        NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+    # ------------------------------------------------------------------
+    # Trusted Publishing (OIDC) — no long-lived NUGET_API_KEY secret.
+    # NuGet/login exchanges the workflow's GitHub OIDC token for a
+    # short-lived NuGet.org API key, valid only for this job.
+    #
+    # Requires, on NuGet.org (Account → Trusted Publishing):
+    #   - a trusted-publishing policy for this repository/workflow
+    # Requires, in this repository (Settings → Variables):
+    #   - NUGET_USER = the NuGet.org account that owns the policy
+    # ------------------------------------------------------------------
+    - name: Verify Trusted Publishing configuration
       run: |
-        # Check if API key is configured
-        if [ -z "$NUGET_API_KEY" ]; then
-          echo "❌ Error: NUGET_API_KEY secret is not configured"
-          echo "Please add your NuGet.org API key as a repository secret named 'NUGET_API_KEY'"
-          echo "Get your API key from: https://www.nuget.org/account/apikeys"
+        if [ -z "${{ vars.NUGET_USER }}" ]; then
+          echo "❌ Error: repository variable 'NUGET_USER' is not configured"
+          echo "Set it to the NuGet.org account (user or organization) that owns the"
+          echo "trusted-publishing policy for this repository:"
+          echo "  Settings → Secrets and variables → Actions → Variables → New repository variable"
           exit 1
         fi
-        
+        echo "✅ Publishing as NuGet.org account: ${{ vars.NUGET_USER }}"
+
+    - name: NuGet login (Trusted Publishing)
+      id: nuget-login
+      uses: NuGet/login@v1
+      with:
+        user: ${{ vars.NUGET_USER }}
+
+    - name: Publish to NuGet.org
+      env:
+        NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+      run: |
+        if [ -z "$NUGET_API_KEY" ]; then
+          echo "❌ Error: Trusted Publishing did not return a temporary API key"
+          echo "Check that the NuGet.org trusted-publishing policy matches this"
+          echo "repository, workflow file and branch, and that it has not expired."
+          exit 1
+        fi
+
         echo "🚀 Publishing packages to NuGet.org..."
         
         FORCE_FLAG=""

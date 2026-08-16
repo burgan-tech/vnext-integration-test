@@ -11,7 +11,7 @@ namespace VNext.Testing.Sdk.Infrastructure;
 public static class LocalDomainPublisher
 {
     private static readonly string[] ComponentTypes =
-        ["schemas", "workflows", "tasks", "functions", "views", "extensions"];
+        ["schemas", "workflows", "tasks", "functions", "views", "extensions", "mappings"];
 
     /// <param name="orchestratorBaseUrl">Base URL of the vNext orchestrator API.</param>
     /// <param name="appDomain">

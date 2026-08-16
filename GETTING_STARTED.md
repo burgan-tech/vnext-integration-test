@@ -40,10 +40,13 @@ Verify the following before proceeding:
     "tasks": "tasks",
     "functions": "functions",
     "views": "views",
-    "extensions": "extensions"
+    "extensions": "extensions",
+    "mappings": "mappings"
   }
 }
 ```
+
+> Any component type missing from `paths` — or whose directory doesn't exist — is skipped, so you only need to list the types your domain actually uses.
 
 ---
 
@@ -94,6 +97,8 @@ MorphFx.IntegrationTests/
 ├── Config/
 │   ├── appsettings.orchestration.json   # Orchestrator container configuration
 │   ├── appsettings.execution.json       # Execution container configuration
+│   ├── appsettings.inbox.json           # Inbox worker configuration
+│   ├── appsettings.outbox.json          # Outbox worker configuration
 │   └── appsettings.db-migrator.json     # DB migrator worker configuration
 ├── Infrastructure/
 │   ├── VNextTestEnvironment.cs          # Docker stack manager (domain overrides)
@@ -102,6 +107,8 @@ MorphFx.IntegrationTests/
 │   └── DaprComponents/
 │       ├── orchestration/               # Orchestrator Dapr component YAMLs
 │       ├── execution/                   # Execution Dapr component YAMLs
+│       ├── inbox/                       # Inbox worker Dapr component YAMLs
+│       ├── outbox/                      # Outbox worker Dapr component YAMLs
 │       └── db-migrator/                 # DB migrator Dapr component YAMLs (config, lock, secretstore)
 ├── Helpers/
 │   └── TestDataBuilder.cs               # Domain-specific payload factories
@@ -113,7 +120,7 @@ MorphFx.IntegrationTests/
 
 ## 3. Configuration
 
-After scaffolding, there are **5 areas** that must be updated to match your domain.
+After scaffolding, there are **7 areas** that must be updated to match your domain.
 
 ### 3.1 `Infrastructure/VNextTestEnvironment.cs`
 
@@ -158,12 +165,32 @@ Configuration file bind-mounted into the orchestrator container. Fields to updat
 | Field | Description |
 |---|---|
 | `ApplicationName` | Identifies the application — appears in logs |
-| `ConnectionStrings.Default` | Contains the `POSTGRES_HOST` placeholder — do not edit it |
+| `ConnectionStrings.Default` | Contains the `POSTGRES_HOST` / `POSTGRES_DB` placeholders — do not edit them |
 | `Redis.Standalone.EndPoints` | Contains the `REDIS_HOST` placeholder — do not edit it |
 | `ExecutionApi.AppId` | Must follow the `vnext-execution-app-{domain}` format |
+| `Example.ApiBaseUrl` | Sample external API address, pointed at Mocklab via `http://MOCKLAB_HOST:5000` — rename the section to your domain's setting, keep the placeholder |
 | `WorkingHours` | Update to reflect your domain's calendar hours (if applicable) |
 
-> Do not modify the `POSTGRES_HOST` and `REDIS_HOST` placeholders. `VNextTestEnvironment` replaces them automatically with the real Docker network aliases at startup.
+> Do not modify the `POSTGRES_HOST`, `POSTGRES_DB`, `REDIS_HOST` and `MOCKLAB_HOST` placeholders. `VNextTestEnvironment` replaces them automatically with the real Docker network aliases at startup.
+
+**Pointing a domain setting at the mock service**
+
+Any setting that would otherwise hold an external HTTP address should use `MOCKLAB_HOST` so it resolves to the built-in Mocklab container instead of a real service. Mocklab listens on port **5000** inside the test network:
+
+```json
+"PaymentGateway": {
+  "ApiBaseUrl": "http://MOCKLAB_HOST:5000"
+}
+```
+
+At startup this becomes `http://test-mocklab:5000`. If you point tests at a mock server you host yourself, override `MocklabHost` instead of hardcoding the address:
+
+```csharp
+// Infrastructure/VNextTestEnvironment.cs
+protected override string MocklabHost => "my-shared-mock";
+```
+
+> `MOCKLAB_HOST` substitutes only the host — always write the `:5000` port yourself. If you set `EnableMocklab => false`, remove or repoint these settings; the placeholder will still be substituted but nothing will be listening.
 
 ### 3.4 `Config/appsettings.execution.json`
 
@@ -174,9 +201,39 @@ Configuration file bind-mounted into the execution container. Fields to update:
 | `ApplicationName` | Identifies the application |
 | `OrchestrationApi.AppId` | Must follow the `vnext-app-{domain}` format |
 | `Redis.Standalone.EndPoints` | Contains the `REDIS_HOST` placeholder — do not edit it |
-| `Dapr.Notification.ComponentName` | Notification binding component name (default: `vnext-notification-binding`) |
+| `TriggerRetry` | Retry policy for trigger dispatch (defaults retry on `409`) |
 
-### 3.5 `Config/appsettings.db-migrator.json`
+> Notification bindings are configured on the **orchestrator** side, under `Dapr.Notification` in `appsettings.orchestration.json` (`BindingPrefix`, `DefaultOperation`, `TimeoutSeconds`). The SDK no longer ships a default `notification-binding.yaml` — add one to `Infrastructure/DaprComponents/execution/` if your domain sends notifications (see §6.4).
+
+### 3.5 `Config/appsettings.inbox.json`
+
+Configuration file bind-mounted into the inbox worker container. The inbox drains the `sys_queues` inbox table and forwards each message into the orchestrator (subflow lifecycle, transition continuations), which is what gives vNext its at-least-once delivery guarantee.
+
+| Field | Description |
+|---|---|
+| `ApplicationName` | Identifies the application — appears in logs |
+| `ConnectionStrings.Default` | Contains the `POSTGRES_HOST` / `POSTGRES_DB` placeholders — do not edit them |
+| `OrchestrationApi.AppId` | Must follow the `vnext-app-{domain}` format |
+| `OrchestrationApi.InvocationTimeoutSeconds` | Per-forward budget (default `60`). Owns the timeout — the Dapr resiliency policy deliberately declares none |
+| `Aether.Inbox.Schema` | Database schema holding the queue tables (default: `sys_queues`) |
+| `Aether.Inbox.MaxRetryCount` / `RetryBaseDelay` | Redelivery policy before a message is dead-lettered |
+| `Aether.Inbox.ProcessingBatchSize` / polling intervals | Throughput knobs — the defaults are tuned for tests and rarely need changing |
+
+### 3.6 `Config/appsettings.outbox.json`
+
+Configuration file bind-mounted into the outbox worker container. The outbox publishes messages the orchestrator wrote transactionally to the `sys_queues` outbox table.
+
+| Field | Description |
+|---|---|
+| `ApplicationName` | Identifies the application — appears in logs |
+| `ConnectionStrings.Default` | Contains the `POSTGRES_HOST` / `POSTGRES_DB` placeholders — do not edit them |
+| `Aether.Outbox.Schema` | Must match `Aether.Outbox.Schema` in `appsettings.orchestration.json` (default: `sys_queues`) |
+| `Aether.Outbox.BatchSize` / polling intervals | Drain throughput knobs |
+| `ResultRetry` | Retry policy for transient `TransitionLocked` / `Locked` results |
+
+> The inbox and outbox both talk to the same database as the orchestrator. If you override `DatabaseName`, leave `POSTGRES_DB` in place in all five config files — it is substituted with that value at startup.
+
+### 3.7 `Config/appsettings.db-migrator.json`
 
 Configuration file bind-mounted into the db-migrator worker container. It runs before the orchestrator and execution services and exits after completing the database schema migration.
 
@@ -188,15 +245,17 @@ Configuration file bind-mounted into the db-migrator worker container. It runs b
 
 > `POSTGRES_DB` is resolved to the value of `VNextTestEnvironment.DatabaseName` (e.g. `vNext_MorphFx_Test`).
 
-### 3.6 `Infrastructure/DaprComponents/`
+### 3.8 `Infrastructure/DaprComponents/`
 
-The template places copies of the SDK's default YAML files in this folder across three roles:
+The template places copies of the SDK's default YAML files in this folder across five roles:
 
-| Role folder | Used by |
-|---|---|
-| `orchestration/` | vNext orchestrator daprd sidecar |
-| `execution/` | vNext execution daprd sidecar |
-| `db-migrator/` | db-migrator worker (config, lock, secretstore) |
+| Role folder | Used by | Components |
+|---|---|---|
+| `orchestration/` | vNext orchestrator daprd sidecar | config, lock, secretstore, state, pubsub, pubsub-broadcast, resiliency |
+| `execution/` | vNext execution daprd sidecar | config, lock, secretstore, state, pubsub, pubsub-broadcast |
+| `inbox/` | inbox worker daprd sidecar | config, lock, secretstore, state, pubsub, pubsub-broadcast, resiliency |
+| `outbox/` | outbox worker daprd sidecar | config, lock, secretstore, state, pubsub |
+| `db-migrator/` | db-migrator worker | config, lock, secretstore |
 
 You have two options per role:
 
@@ -204,9 +263,45 @@ You have two options per role:
 Delete the role folder entirely (e.g. `Infrastructure/DaprComponents/db-migrator/`). `VNextTestEnvironment` detects its absence and automatically loads the YAML files from the SDK embedded resources.
 
 **Option B — Customise:**
-Keep only the YAML files you need to change and delete the rest. When the folder exists, its YAML files take precedence over the SDK embedded resources.
+Copy the role folder and edit the files you need. Resolution is **per role and all-or-nothing** — once the folder exists, *only* its files are used for that role, and the SDK's embedded defaults for that role are not merged in. Deleting individual files from a role folder therefore removes those components entirely rather than falling back to the SDK.
 
-> Leave the `REDIS_HOST` and `VAULT_HOST` placeholders in all YAML files as-is — they are substituted at runtime.
+> Leave the `APP_DOMAIN`, `REDIS_HOST`, `VAULT_HOST` and `MOCKLAB_HOST` placeholders in all YAML files as-is — they are substituted at runtime.
+
+**About `resiliency.yaml`**
+
+`orchestration/resiliency.yaml` and `inbox/resiliency.yaml` declare Dapr `Resiliency` policies (not `Component`s). Each defines a **circuit breaker only** — no retry, no timeout — and the files carry a long inline comment explaining why:
+
+- Dapr's service-invocation retry cannot distinguish "the app ran the task and returned 500" from "the sidecar never reached the app", so a blanket retry would re-invoke side-effecting tasks.
+- Retry classification therefore lives in the application layer (`RemoteInvokerService` for orchestration → execution, `DaprOrchestrationForwarder` for inbox → orchestration).
+- Per-call budgets are owned by `ExecutionApi:InvocationTimeoutSeconds` and `OrchestrationApi:InvocationTimeoutSeconds`.
+
+Read those comments before adding a retry or timeout policy — doing so causes cross-layer retry amplification.
+
+**Target keys are app-ids, and app-ids end in your domain.** A `Resiliency` policy addresses each callee by Dapr app-id, and every vNext app-id is suffixed with the domain (`vnext-app-morphfx`, `vnext-execution-app-morphfx`, …). The shipped files use the `APP_DOMAIN` placeholder so this resolves automatically:
+
+```yaml
+  targets:
+    apps:
+      # becomes vnext-execution-app-morphfx when Domain => "morphfx"
+      vnext-execution-app-APP_DOMAIN:
+        circuitBreaker: invocationBreaker
+```
+
+| File | Target key | Callee |
+|---|---|---|
+| `orchestration/resiliency.yaml` | `vnext-execution-app-APP_DOMAIN` | execution service |
+| `inbox/resiliency.yaml` | `vnext-app-APP_DOMAIN` | orchestrator |
+
+> A target key without the domain suffix matches no app, so Dapr silently applies the policy to nothing — there is no startup warning. If you add a target of your own, verify it against the callee's `DAPR_APP_ID`.
+
+If your domain uses cross-domain `DirectTrigger` targets, those live in *other* domains and cannot be derived from `APP_DOMAIN` — add one `targets.apps` entry per known remote domain, with that domain's name written out:
+
+```yaml
+      vnext-execution-app-APP_DOMAIN:      # your own domain
+        circuitBreaker: invocationBreaker
+      vnext-execution-app-payments:        # a remote domain you call
+        circuitBreaker: invocationBreaker
+```
 
 ---
 
@@ -410,10 +505,14 @@ dotnet test
 5. Dapr placement + scheduler
 6. vNext orchestrator + daprd sidecar
 7. vNext execution + daprd sidecar
-8. Mocklab + daprd sidecar *(skipped when `EnableMocklab` is `false`)*
-9. Publishes domain definitions *(skipped when `EnableDomainPublish` is `false`)*
+8. vNext inbox + daprd sidecar
+9. vNext outbox + daprd sidecar
+10. Mocklab + daprd sidecar *(skipped when `EnableMocklab` is `false`)*
+11. Publishes domain definitions *(skipped when `EnableDomainPublish` is `false`)*
 
 All long-running containers are cleaned up after the test run completes. The db-migrator exits on its own and is not included in the cleanup list.
+
+The inbox and outbox pull the `{VNextImage}/inbox` and `{VNextImage}/outbox` images at the tag given by `VNextImageVersion`, so your registry must publish all four service images (`orchestrator`, `execution`, `inbox`, `outbox`) at that tag.
 
 > On the first run, container images will be pulled and startup may take a few minutes. Subsequent runs are much faster because Docker caches the images.
 
@@ -432,15 +531,16 @@ In this mode:
 
 ### 5.3 Configuring `test.runsettings`
 
-Environment variables can be declared in `test.runsettings`:
+Environment variables are declared in `test.runsettings` using the **variable name as the element name**:
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <RunSettings>
   <RunConfiguration>
     <EnvironmentVariables>
-      <!-- Uncomment to run against an external environment -->
-      <!-- <EnvironmentVariable name="VNEXT_BASE_URL" value="http://localhost:5000" /> -->
+      <!-- Uncomment to run against an external environment
+      <VNEXT_BASE_URL>http://localhost:5000</VNEXT_BASE_URL>
+      -->
     </EnvironmentVariables>
   </RunConfiguration>
 </RunSettings>
@@ -453,11 +553,13 @@ For local overrides, create a `test.runsettings.local` file (already listed in `
 <RunSettings>
   <RunConfiguration>
     <EnvironmentVariables>
-      <EnvironmentVariable name="VNEXT_BASE_URL" value="http://localhost:5000" />
+      <VNEXT_BASE_URL>http://localhost:5000</VNEXT_BASE_URL>
     </EnvironmentVariables>
   </RunConfiguration>
 </RunSettings>
 ```
+
+> xUnit v3 does not inject `<EnvironmentVariables>` into the test process, so the SDK parses the file itself. It looks for `test.runsettings.local` first, then `test.runsettings`, in the test output directory — and reads **element names**, not `name`/`value` attributes. A real process environment variable always wins over both files.
 
 ### 5.4 Running Specific Tests
 
@@ -522,6 +624,32 @@ protected override Dictionary<string, string> GetExecutionEnvironment()
 }
 ```
 
+The inbox and outbox workers have the same hooks — `GetInboxEnvironment()` and `GetOutboxEnvironment()`:
+
+```csharp
+protected override Dictionary<string, string> GetInboxEnvironment()
+{
+    var env = base.GetInboxEnvironment();
+    // Requires a component named vnext-pubsub-morphfx in Infrastructure/DaprComponents/inbox/
+    env["DAPR_PUBSUB_STORE_NAME"] = "vnext-pubsub-morphfx";
+    return env;
+}
+```
+
+Each role's defaults set `APP_DOMAIN`, `DAPR_APP_ID`, the sidecar ports, and that role's Dapr store names:
+
+| Variable | orchestration | execution | inbox | outbox | db-migrator |
+|---|:-:|:-:|:-:|:-:|:-:|
+| `DAPR_STATE_STORE_NAME` = `vnext-state` | ✔ | ✔ | ✔ | ✔ | — |
+| `DAPR_SECRET_STORE_NAME` = `vnext-secret` | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `DAPR_LOCK_STORE_NAME` = `vnext-lock` | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `DAPR_PUBSUB_STORE_NAME` = `vnext-pubsub` | ✔ | ✔ | ✔ | ✔ | — |
+| `DAPR_PUBSUB_BROADCAST_STORE_NAME` = `vnext-pubsub-broadcast` | ✔ | ✔ | ✔ | — | — |
+
+The outbox has no broadcast store: it only drains the `sys_queues` outbox table to the regular pubsub, so `outbox/` ships no `pubsub-broadcast.yaml`.
+
+> Every store name must match the `metadata.name` of a component YAML in that role's folder. Nothing validates this at startup — the sidecar comes up fine and the failure only surfaces when the app first reaches for the component. If you set a store name here, add or rename the matching YAML in the same commit.
+
 ### 6.3 Adding an Auth Header
 
 If the test environment requires authentication, extend `VNextApiClient`:
@@ -562,10 +690,10 @@ protected override VNextApiClient CreateApiClient(string baseUrl) =>
 
 ### 6.4 Using Custom Dapr Component YAMLs
 
-If your domain has components with unique requirements (e.g. a different notification binding):
+If your domain has components with unique requirements (e.g. an extra HTTP binding, or a pubsub with a different consumer group):
 
-1. Keep the `Infrastructure/DaprComponents/execution/` folder (do not delete it).
-2. Edit the YAML file you want to customise:
+1. Keep the `Infrastructure/DaprComponents/{role}/` folder for that role (do not delete it), and keep **all** of its files — the folder replaces the SDK defaults for that role wholesale.
+2. Edit or add the YAML you need:
 
 ```yaml
 # Infrastructure/DaprComponents/execution/notification-binding.yaml
@@ -578,10 +706,20 @@ spec:
   version: v1
   metadata:
     - name: url
-      value: http://MOCKOON_HOST:3002/api/morphfx/notify
+      value: http://MOCKLAB_HOST:5000/api/morphfx/notify
 ```
 
-3. Keep only the files you need to override; delete the rest. The SDK loads the remaining files from its embedded resources.
+3. No `.csproj` change is needed — the template already copies the whole tree to the output directory, which is where the SDK reads local overrides from:
+
+```xml
+<Content Include="Infrastructure\DaprComponents\**\*.yaml">
+  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+</Content>
+```
+
+> Do not add `<EmbeddedResource>` items for these files. The SDK only ever scans its *own* assembly for embedded YAML, so embedding them in your test project has no effect — local overrides are always read from disk.
+
+For a role you do **not** customise, delete its folder and let the SDK provide the defaults.
 
 ### 6.5 Customising the DB Migrator
 
@@ -636,7 +774,7 @@ protected override Task RunDbMigratorAsync(string componentsDir, string settings
 
 ### 6.6 Mocklab (Built-in Mock HTTP Service)
 
-Mocklab is started automatically after the execution container and shares the Docker network. The execution Dapr binding's `MOCKOON_HOST` placeholder is resolved to `test-mocklab` by default.
+Mocklab is started automatically after the outbox container and shares the Docker network, serving HTTP on port **5000** at the alias `test-mocklab`. Both the `MOCKLAB_HOST` placeholder (in `appsettings.*.json` *and* Dapr YAML) and the legacy `MOCKOON_HOST` placeholder (Dapr YAML) resolve to that alias.
 
 **Seed data** — place your mock definition JSON files in `Infrastructure/MocklabSeed/`. They are bind-mounted into the container at `/app/seed` on startup.
 
@@ -652,6 +790,12 @@ protected override string MocklabImage => "ghcr.io/burgan-tech/mocklab:1.2.0";
 ```csharp
 protected override string MocklabSeedDirectory =>
     Path.Combine(Directory.GetCurrentDirectory(), "Config", "MockData");
+```
+
+**Point the placeholders at your own mock server:**
+
+```csharp
+protected override string MocklabHost => "my-shared-mock";
 ```
 
 **Override the full startup behaviour** (e.g. different health check path):
@@ -673,7 +817,43 @@ protected override bool EnableMocklab => false;
 
 When `EnableMocklab` is `false`, `StartMocklabAsync()` is not called and no Mocklab container is created.
 
-### 6.7 Disabling Domain Publish
+### 6.7 Customising the Inbox and Outbox Workers
+
+The inbox and outbox are ordinary vNext service containers, configured the same way as the orchestrator and execution services:
+
+| What | How |
+|---|---|
+| Image tag | `VNextImageVersion` — shared by all four services |
+| Registry / image path | `VNextImage` — the SDK appends `/inbox` and `/outbox` |
+| Container env vars | `GetInboxEnvironment()` / `GetOutboxEnvironment()` |
+| Dapr components | `Infrastructure/DaprComponents/inbox/` and `outbox/` |
+| App configuration | `Config/appsettings.inbox.json` and `appsettings.outbox.json` |
+
+**Pin the workers to a specific image tag** (they follow `VNextImageVersion`, so pin it for all services at once):
+
+```csharp
+// Infrastructure/VNextTestEnvironment.cs
+protected override string VNextImageVersion => "1.4.2";
+```
+
+**Tune queue behaviour** in the config files rather than in code — `Aether.Inbox.*` and `Aether.Outbox.*` control batch size, lease duration, redelivery and cleanup. The defaults ship tuned for test runs (100-message batches, 100 ms busy polling), so a test that waits on asynchronous side effects usually needs no changes.
+
+**A note on timing:** because both workers poll, side effects driven through the inbox/outbox are *eventually* consistent. Assert on them with a retry/poll loop rather than a single read immediately after a transition:
+
+```csharp
+// Poll instead of asserting once
+var deadline = DateTime.UtcNow.AddSeconds(30);
+while (DateTime.UtcNow < deadline)
+{
+    var instance = await Api.GetInstanceAsync(Workflow, id);
+    if (GetCurrentState(instance.Body) == "completed") return;
+    await Task.Delay(500);
+}
+
+Assert.Fail("Instance did not reach 'completed' within 30s");
+```
+
+### 6.8 Disabling Domain Publish
 
 `LocalDomainPublisher` runs automatically after the environment is ready (both in local Testcontainers mode and against an external environment). If your tests supply definitions differently or don't need any, disable it:
 
@@ -684,9 +864,9 @@ protected override bool EnableDomainPublish => false;
 
 > Both `EnableMocklab` and `EnableDomainPublish` default to `true`, so existing projects are not affected.
 
-### 6.8 Starting Additional Services (Custom Containers)
+### 6.9 Starting Additional Services (Custom Containers)
 
-Use `OnAfterEnvironmentReadyAsync` to start any service that your tests depend on but that is not part of the standard vNext stack. This hook is called after the orchestrator, execution, Mocklab, and domain publish steps have all completed successfully.
+Use `OnAfterEnvironmentReadyAsync` to start any service that your tests depend on but that is not part of the standard vNext stack. This hook is called after the orchestrator, execution, inbox, outbox, Mocklab, and domain publish steps have all completed successfully.
 
 **Example: starting a custom microservice container**
 
@@ -737,7 +917,13 @@ public override async Task DisposeAsync()
 | `vnext.config.json` not found | Config file is not at the repository root | Locate `vnext.config.json` by walking up from the test output directory; move it to the correct location |
 | Container fails to start | Docker Desktop is not running | Verify with `docker ps` |
 | `OrchestratorBaseUrl` is null | `InitializeAsync` was not called | Check the xUnit collection fixture configuration |
-| Dapr sidecar does not start | YAML placeholder was accidentally edited | Ensure `REDIS_HOST` / `VAULT_HOST` are still present as-is in the YAML files |
+| Dapr sidecar does not start | YAML placeholder was accidentally edited | Ensure `REDIS_HOST` / `VAULT_HOST` / `MOCKLAB_HOST` are still present as-is in the YAML files |
+| `appsettings.inbox.json` / `appsettings.outbox.json` not found | Project scaffolded from an older template version | All five `Config/appsettings.*.json` files are required. Copy the missing ones from the template and make sure they are set to *Copy to Output Directory* |
+| Inbox or outbox container fails to pull | Registry does not publish `{VNextImage}/inbox` or `/outbox` at `VNextImageVersion` | Verify all four service images exist at that tag; pin `VNextImageVersion` to a tag that has them |
+| Inbox/outbox healthy but nothing is processed | Dapr store name in the env vars doesn't match a component `metadata.name` in the role folder | Compare `DAPR_*_STORE_NAME` from `GetInboxEnvironment()` / `GetOutboxEnvironment()` against the YAML files in `Infrastructure/DaprComponents/inbox/` and `outbox/` |
+| A component disappeared after customising a role folder | Role folders replace SDK defaults wholesale | Restore the full set of YAML files for that role, or delete the folder to fall back to SDK defaults |
+| Assertion fails right after a transition, passes on rerun | Side effect travels through the polling inbox/outbox | Poll for the expected state instead of asserting once — see §6.7 |
+| Domain setting still points at `localhost` | Placeholder missing or port omitted | Use `http://MOCKLAB_HOST:5000`; `MOCKLAB_HOST` substitutes the host only |
 | Domain publish fails | Paths in `vnext.config.json` are incorrect | Check `componentsRoot` and subdirectory path values |
 | db-migrator times out | Wait strategy log message doesn't match | Override `RunDbMigratorAsync` and adjust `UntilMessageIsLogged(...)` to match your migrator's actual log output |
 | Mocklab fails to start | Health check path does not match | Override `StartMocklabAsync` and change `ForPath("/health")` to your Mocklab's actual health endpoint |
