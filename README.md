@@ -437,9 +437,11 @@ This requires:
 |---|---|
 | Workflow `permissions` | `id-token: write` |
 | NuGet.org → Account → Trusted Publishing | A policy bound to this repository, `publish-nuget.yml`, and the `release-v*` branches |
-| Repo → Settings → Variables → Actions | `NUGET_USER` — the NuGet.org account (user or organization) that owns the policy |
+| Repo → Settings → Secrets and variables → Actions → **Variables** | `NUGET_USER` — the NuGet.org account (user or organization) that owns the policy |
 
-If `NUGET_USER` is unset the workflow fails fast before packing.
+The workflow reads `NUGET_USER` from Variables first and falls back to Secrets, so it works from either tab. Prefer the **Variables** tab: an account name is not sensitive, and a secret is masked as `***` in the logs, which makes a wrong value harder to spot. Note that `vars` and `secrets` are separate stores — `${{ vars.X }}` does not see a value added under Secrets.
+
+If `NUGET_USER` is set in neither, the workflow fails fast before packing.
 
 ---
 
