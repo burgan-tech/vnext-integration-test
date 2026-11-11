@@ -10,8 +10,10 @@ namespace VNext.Testing.Sdk.Infrastructure;
 /// </summary>
 public static class LocalDomainPublisher
 {
+    // "agents" are sys-agents components (AI Agent state). Publish does not resolve references
+    // between components, so the order only decides the log order.
     private static readonly string[] ComponentTypes =
-        ["schemas", "workflows", "tasks", "functions", "views", "extensions", "mappings"];
+        ["schemas", "workflows", "tasks", "functions", "views", "extensions", "mappings", "agents"];
 
     /// <param name="orchestratorBaseUrl">Base URL of the vNext orchestrator API.</param>
     /// <param name="appDomain">

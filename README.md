@@ -247,7 +247,8 @@ Walks up from the test assembly directory to find `vnext.config.json`, then:
 3. Replaces all `domain` fields with the `appDomain` value (skipping `config` and `process` subtrees)
 4. POSTs each component to `/api/v1/definitions/publish`
 
-Supported component types: `schemas`, `workflows`, `tasks`, `functions`, `views`, `extensions`, `mappings`
+Supported component types: `schemas`, `workflows`, `tasks`, `functions`, `views`, `extensions`, `mappings`, `agents`
+(`sys-agents` components of the AI Agent state)
 
 **Expected `vnext.config.json` structure:**
 
@@ -263,12 +264,13 @@ Supported component types: `schemas`, `workflows`, `tasks`, `functions`, `views`
     "functions": "functions",
     "views": "views",
     "extensions": "extensions",
-    "mappings": "mappings"
+    "mappings": "mappings",
+    "agents": "agents"
   }
 }
 ```
 
-A component type whose path is missing from `paths` (or whose directory does not exist) is skipped silently, so existing configs without `mappings` keep working.
+A component type whose path is missing from `paths` (or whose directory does not exist) is skipped silently, so existing configs without `mappings` or `agents` keep working.
 
 ---
 
