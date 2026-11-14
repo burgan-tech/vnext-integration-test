@@ -513,7 +513,12 @@ public class VNextTestEnvironment : IAsyncLifetime
             ["DAPR_SECRET_STORE_NAME"] = "vnext-secret",
             ["DAPR_LOCK_STORE_NAME"] = "vnext-lock",
             ["DAPR_PUBSUB_STORE_NAME"] = "vnext-pubsub",
-            ["DAPR_PUBSUB_BROADCAST_STORE_NAME"] = "vnext-pubsub-broadcast"
+            ["DAPR_PUBSUB_BROADCAST_STORE_NAME"] = "vnext-pubsub-broadcast",
+            // AI Agent state: the deterministic in-process provider that agents with
+            // "provider": "local" use. It makes no network call. A runtime without the
+            // AI Agent state ignores the section.
+            ["AiAgent__Providers__local__Kind"] = "local",
+            ["AiAgent__Providers__local__Model"] = "local"
         };
     }
 

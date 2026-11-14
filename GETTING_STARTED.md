@@ -41,7 +41,8 @@ Verify the following before proceeding:
     "functions": "functions",
     "views": "views",
     "extensions": "extensions",
-    "mappings": "mappings"
+    "mappings": "mappings",
+    "agents": "agents"
   }
 }
 ```
@@ -647,6 +648,8 @@ Each role's defaults set `APP_DOMAIN`, `DAPR_APP_ID`, the sidecar ports, and tha
 | `DAPR_PUBSUB_BROADCAST_STORE_NAME` = `vnext-pubsub-broadcast` | ✔ | ✔ | ✔ | — | — |
 
 The outbox has no broadcast store: it only drains the `sys_queues` outbox table to the regular pubsub, so `outbox/` ships no `pubsub-broadcast.yaml`.
+
+The orchestrator also gets `AiAgent__Providers__local__Kind` = `local` and `AiAgent__Providers__local__Model` = `local`: the deterministic in-process provider that AI Agent states with `"provider": "local"` use, with no network call. An agent that names any other provider profile needs that profile added here (endpoint, model, `ApiKeySecretRef`); without it the state leaves through its `fallback` transition. Never put an API key value in this dictionary or in component JSON — `ApiKeySecretRef` names the configuration or secret key that holds it.
 
 > Every store name must match the `metadata.name` of a component YAML in that role's folder. Nothing validates this at startup — the sidecar comes up fine and the failure only surfaces when the app first reaches for the component. If you set a store name here, add or rename the matching YAML in the same commit.
 
